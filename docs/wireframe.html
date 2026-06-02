@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>zpl-tools — Wireframe v3 (egui-accurate)</title>
+<style>
+  /* ── egui default dark theme, approximated in CSS ── */
+  :root {
+    --bg:          #1b1b1b;   /* panel_fill from_gray(27) */
+    --widget:      #3c3c3c;   /* button/widget fill */
+    --widget-hov:  #525252;
+    --widget-act:  #636363;
+    --border:      #414141;   /* stroke from_gray(65) */
+    --text:        #c8c8c8;   /* from_gray(200) */
+    --text-strong: #f0f0f0;
+    --muted:       #787878;   /* from_gray(120) */
+    --sel:         rgba(61,111,191,.65); /* egui selection blue */
+    --sel-solid:   #3d6fbf;
+    --green:       #6dbf85;
+    --radius:      3px;
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --mono: 'Consolas', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── wireframe screen picker (not part of app UI) ── */
+  #wnav {
+    background: #111;
+    border-bottom: 1px solid #2a2a2a;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+  #wnav em { color: #555; text-transform: uppercase; letter-spacing: .05em; margin-right: 6px; font-style: normal; }
+  .wbtn { font-size: 10px; padding: 2px 10px; border-radius: 10px; border: 1px solid #333; background: #1a1a1a; color: #666; cursor: pointer; }
+  .wbtn.on { background: var(--sel-solid); border-color: var(--sel-solid); color: #fff; }
+
+  .screen { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .screen.on { display: flex; }
+
+  /* ── egui CentralPanel ── */
+  .egui-panel {
+    flex: 1;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* egui heading */
+  .e-heading {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-strong);
+    margin-bottom: 10px;
+    line-height: 1.2;
+  }
+
+  /* egui horizontal row */
+  .e-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    flex-wrap: nowrap;
+  }
+
+  /* egui label */
+  .e-label { color: var(--text); font-size: 13px; white-space: nowrap; }
+  .e-label.strong { font-weight: 700; color: var(--text-strong); }
+  .e-label.muted { color: var(--muted); }
+  .e-label.italic { font-style: italic; color: var(--muted); }
+  .e-label.mono { font-family: var(--mono); font-size: 12px; }
+
+  /* egui button */
+  .e-btn {
+    background: var(--widget);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 3px 8px;
+    font-size: 13px;
+    font-family: var(--font);
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .e-btn:hover { background: var(--widget-hov); }
+
+  /* egui selectable_label */
+  .e-sel {
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    background: transparent;
+  }
+  .e-sel:hover { background: var(--widget-hov); }
+  .e-sel.on { background: var(--sel); color: var(--text-strong); }
+
+  /* egui ComboBox — rendered as a styled select */
+  .e-combo {
+    background: var(--widget);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 2px 6px;
+    font-size: 13px;
+    font-family: var(--font);
+    cursor: pointer;
+  }
+  .e-combo:focus { outline: none; border-color: var(--sel-solid); }
+
+  /* egui TextEdit::singleline */
+  .e-input {
+    background: var(--widget);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 2px 6px;
+    font-size: 13px;
+    font-family: var(--font);
+  }
+  .e-input:focus { outline: none; border-color: var(--sel-solid); }
+  .e-input.mono { font-family: var(--mono); font-size: 12px; }
+
+  /* egui separator */
+  .e-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 6px 0;
+  }
+  .e-sep-v {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  /* egui add_space */
+  .sp4  { height: 4px; }
+  .sp6  { height: 6px; }
+  .sp10 { height: 10px; }
+
+  /* egui horizontal_top (two columns) */
+  .e-cols {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .e-col-left  { display: flex; flex-direction: column; gap: 5px; min-width: 400px; overflow-y: auto; }
+  .e-col-right { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow-y: auto; }
+
+  /* Design mode canvas column */
+  .e-col-canvas {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow: auto;
+    align-items: flex-start;
+  }
+
+  /* The label canvas itself */
+  .label-canvas {
+    background: #fff;
+    box-shadow: 0 1px 8px rgba(0,0,0,.6);
+    position: relative;
+    flex-shrink: 0;
+  }
+  /* selection */
+  .sel-outline {
+    position: absolute;
+    border: 1px solid var(--sel-solid);
+    pointer-events: none;
+  }
+  .handle {
+    position: absolute;
+    width: 6px; height: 6px;
+    background: var(--sel-solid);
+    border: 1px solid #fff;
+    border-radius: 1px;
+  }
+  .h-tl { top:-3px; left:-3px; }
+  .h-tr { top:-3px; right:-3px; }
+  .h-bl { bottom:-3px; left:-3px; }
+  .h-br { bottom:-3px; right:-3px; }
+  .h-tm { top:-3px; left:50%; transform:translateX(-50%); }
+  .h-bm { bottom:-3px; left:50%; transform:translateX(-50%); }
+
+  .el { position: absolute; cursor: move; }
+  .el-text { font-family: sans-serif; color: #111; padding: 1px 2px; }
+  .el-var {
+    position: absolute;
+    background: rgba(61,111,191,.08);
+    border: 1px dashed var(--sel-solid);
+    color: #335599;
+    font-size: 10px; padding: 1px 3px;
+    cursor: move;
+  }
+
+  /* egui properties section in right column */
+  .e-props-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .e-props-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .e-props-label {
+    font-size: 12px;
+    color: var(--muted);
+    width: 60px;
+    flex-shrink: 0;
+  }
+  .e-icon-btn {
+    width: 24px; height: 24px;
+    background: var(--widget);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--text);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .e-icon-btn.on { background: var(--sel); }
+  .e-icon-btn:hover { background: var(--widget-hov); }
+
+  /* egui TextEdit::multiline code editor */
+  .e-code {
+    background: var(--widget);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 8px;
+    width: 400px;
+    height: 400px;
+    resize: none;
+    overflow-y: auto;
+    white-space: pre;
+  }
+  .e-code:focus { outline: none; border-color: var(--sel-solid); }
+
+  /* egui ScrollArea rendered as plain overflow */
+  .e-scroll { overflow-y: auto; flex: 1; min-height: 0; }
+
+  /* status bar (bottom_up layout) */
+  .e-status {
+    margin-top: auto;
+    flex-shrink: 0;
+  }
+
+  /* Use mode variable fields */
+  .var-field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+
+  /* Clipart panel — shown as a simple ScrollArea grid */
+  .clip-grid-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 4px;
+  }
+  .clip-section-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .clip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .clip-cell {
+    width: 64px; height: 64px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+  }
+  .clip-cell:hover { border-color: var(--sel-solid); }
+  .clip-cell.on { border-color: var(--sel-solid); background: rgba(61,111,191,.08); }
+  .clip-cell svg { width: 38px; height: 38px; display: block; }
+  .clip-cell span { font-size: 9px; color: #555; text-align: center; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* batch mini labels */
+  .mini-lbl {
+    width: 68px; height: 42px; background: #fff;
+    border: 1px solid var(--border); border-radius: 2px;
+    display: flex; flex-direction: column; align-items: flex-start;
+    font-size: 7px; color: #222; padding: 3px; flex-shrink: 0;
+    gap: 1px;
+  }
+  .mini-lbl.on { border-color: var(--sel-solid); }
+
+  /* egui curve placeholder */
+  .e-curve {
+    width: 180px; height: 80px;
+    background: var(--widget);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .e-curve svg { width: 100%; height: 100%; display: block; }
+
+  /* template list */
+  .tmpl-item {
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    margin-bottom: 2px;
+  }
+  .tmpl-item:hover { background: var(--widget-hov); }
+  .tmpl-item.on { background: var(--sel); }
+  .tmpl-item .tn { font-size: 12px; font-weight: 600; color: var(--text-strong); }
+  .tmpl-item .tm { font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- wireframe nav -->
+<nav id="wnav">
+  <em>Wireframe screen:</em>
+  <button class="wbtn on"  onclick="show('use')">Use Mode</button>
+  <button class="wbtn"     onclick="show('design')">Design Mode</button>
+  <button class="wbtn"     onclick="show('edit')">Edit ZPL Mode</button>
+  <button class="wbtn"     onclick="show('clipart')">Clipart panel</button>
+  <button class="wbtn"     onclick="show('batch')">Batch Print</button>
+  <button class="wbtn"     onclick="show('tmpl')">Templates</button>
+</nav>
+
+
+<!-- ══════════════════════════════════════════
+     USE MODE  (existing mode, unchanged)
+══════════════════════════════════════════ -->
+<div id="s-use" class="screen on">
+<div class="egui-panel">
+
+  <div class="e-heading">ZPL Printer Tool</div>
+  <div class="sp10"></div>
+
+  <div class="e-row">
+    <button class="e-btn">📁 Load Template</button>
+    <span class="e-label mono">📄 shipping-label.zpl</span>
+  </div>
+  <div class="sp10"></div>
+
+  <div class="e-row">
+    <span class="e-label">Mode:</span>
+    <span class="e-sel on">📄 Use</span>
+    <span class="e-sel">🎨 Design</span>
+    <span class="e-sel">✏ Edit ZPL</span>
+  </div>
+  <div class="sp6"></div>
+
+  <div class="e-row">
+    <span class="e-label">Printer:</span>
+    <select class="e-combo" style="width:180px;"><option>ZebraZPL (USB)</option><option>No printer selected</option></select>
+    <button class="e-btn">🔄</button>
+  </div>
+  <div class="sp10"></div>
+  <hr class="e-sep" />
+  <div class="sp10"></div>
+
+  <!-- horizontal_top: variables | preview -->
+  <div class="e-cols">
+    <div class="e-col-left">
+      <span class="e-label strong">Template Variables:</span>
+      <div class="sp4"></div>
+      <div class="var-field"><span class="e-label" style="width:120px;">Name:</span><input class="e-input" style="width:250px;" value="Alice Johnson" /></div>
+      <div class="var-field"><span class="e-label" style="width:120px;">Address:</span><input class="e-input" style="width:250px;" value="123 Main St" /></div>
+      <div class="var-field"><span class="e-label" style="width:120px;">City / State / ZIP:</span><input class="e-input" style="width:250px;" value="Portland OR 97201" /></div>
+      <div class="var-field"><span class="e-label" style="width:120px;">SKU:</span><input class="e-input" style="width:250px;" value="" /></div>
+      <div class="var-field"><span class="e-label" style="width:120px;">Barcode:</span><input class="e-input" style="width:250px;" value="" /></div>
+      <div class="sp10"></div>
+      <div class="e-row">
+        <button class="e-btn">🖨 Print Label</button>
+        <div style="width:10px;"></div>
+        <button class="e-btn">🔄 Clear</button>
+        <div style="width:10px;"></div>
+        <button class="e-btn">👁 Update Preview</button>
+      </div>
+    </div>
+    <div class="e-col-right">
+      <span class="e-label strong">Preview:</span>
+      <div class="sp4"></div>
+      <!-- preview image placeholder (rendered by zpl-forge) -->
+      <div style="width:280px;height:420px;background:#fff;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;">
+        <span style="color:#aaa;font-size:12px;">Click 'Update Preview' to render</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="e-status">
+    <hr class="e-sep" />
+    <div class="e-row"><span class="e-label">Ready</span></div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     DESIGN MODE  (new mode)
+══════════════════════════════════════════ -->
+<div id="s-design" class="screen">
+<div class="egui-panel">
+
+  <div class="e-heading">ZPL Printer Tool</div>
+  <div class="sp10"></div>
+
+  <div class="e-row">
+    <button class="e-btn">📁 Load Template</button>
+    <span class="e-label mono">📄 shipping-label.zpl</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+      <button class="e-btn">🖨 Print Label</button>
+    </div>
+  </div>
+  <div class="sp10"></div>
+
+  <div class="e-row">
+    <span class="e-label">Mode:</span>
+    <span class="e-sel">📄 Use</span>
+    <span class="e-sel on">🎨 Design</span>
+    <span class="e-sel">✏ Edit ZPL</span>
+  </div>
+  <div class="sp6"></div>
+
+  <div class="e-row">
+    <span class="e-label">Printer:</span>
+    <select class="e-combo" style="width:180px;"><option>ZebraZPL (USB)</option></select>
+    <button class="e-btn">🔄</button>
+    <div class="e-sep-v"></div>
+    <!-- Tool row — inline with controls, egui horizontal style -->
+    <span class="e-label">Tool:</span>
+    <span class="e-sel on" style="font-size:12px;">↖ Select</span>
+    <span class="e-sel" style="font-size:12px;font-weight:700;">T Text</span>
+    <span class="e-sel" style="font-size:12px;">🖼 Image</span>
+    <span class="e-sel" style="font-size:12px;">✦ Clipart</span>
+    <span class="e-sel" style="font-size:12px;letter-spacing:-1px;">▐▌ Barcode</span>
+    <span class="e-sel" style="font-size:12px;">{} Variable</span>
+    <span class="e-sel" style="font-size:12px;">▭ Shape</span>
+    <div class="e-sep-v"></div>
+    <button class="e-btn">↩</button>
+    <button class="e-btn">↪</button>
+  </div>
+  <div class="sp6"></div>
+
+  <div class="e-row">
+    <span class="e-label">Label:</span>
+    <select class="e-combo" style="width:110px;"><option>4″ × 6″</option><option>2″ × 1″</option><option>Custom…</option></select>
+    <select class="e-combo" style="width:70px;"><option>203 dpi</option><option>300 dpi</option><option>600 dpi</option></select>
+    <div class="e-sep-v"></div>
+    <span class="e-label">Font:</span>
+    <select class="e-combo" style="width:90px;"><option>Helvetica</option><option>OCR-B</option></select>
+    <input class="e-input" value="20" style="width:36px;text-align:center;" />
+    <span class="e-icon-btn on"><b>B</b></span>
+    <span class="e-icon-btn"><i>I</i></span>
+    <span class="e-icon-btn">U</span>
+    <div class="e-sep-v"></div>
+    <span class="e-label">Align:</span>
+    <span class="e-icon-btn on">⬅</span>
+    <span class="e-icon-btn">↔</span>
+    <span class="e-icon-btn">➡</span>
+    <div class="e-sep-v"></div>
+    <button class="e-btn">−</button>
+    <span class="e-label" style="width:34px;text-align:center;">100%</span>
+    <button class="e-btn">+</button>
+  </div>
+  <div class="sp10"></div>
+  <hr class="e-sep" />
+  <div class="sp10"></div>
+
+  <!-- horizontal_top: canvas | properties -->
+  <div class="e-cols">
+    <div class="e-col-canvas">
+      <span class="e-label strong">Canvas:</span>
+      <div class="sp4"></div>
+      <!-- label 4×6 at ~60px/inch -->
+      <div class="label-canvas" style="width:240px;height:360px;">
+
+        <!-- guide lines -->
+        <div style="position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(61,111,191,.3);pointer-events:none;"></div>
+        <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(61,111,191,.3);pointer-events:none;"></div>
+
+        <!-- selected text -->
+        <div class="el el-text sel-outline" style="top:14px;left:12px;font-size:16px;font-weight:700;">
+          ACME CORP
+          <div class="handle h-tl"></div><div class="handle h-tr"></div>
+          <div class="handle h-bl"></div><div class="handle h-br"></div>
+          <div class="handle h-tm"></div><div class="handle h-bm"></div>
+        </div>
+
+        <div class="el el-text" style="top:40px;left:12px;font-size:9px;color:#555;">Product Label</div>
+
+        <div class="el-var" style="top:58px;left:12px;">{{SKU}}</div>
+        <div class="el-var" style="top:76px;left:12px;">{{DESCRIPTION}}</div>
+
+        <!-- B&W SVG clipart, transparent bg -->
+        <div class="el" style="right:12px;top:12px;width:66px;height:66px;">
+          <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round" style="width:66px;height:66px;display:block;">
+            <ellipse cx="22" cy="28" rx="16" ry="11"/>
+            <path d="M6 28 Q11 20 16 28 Q21 36 26 28 Q31 20 36 28"/>
+            <path d="M10 19 Q16 10 22 14 Q28 10 34 19"/>
+            <path d="M8 36 Q14 42 22 40 Q30 42 36 36"/>
+          </svg>
+        </div>
+
+        <!-- barcode -->
+        <div style="position:absolute;bottom:14px;left:12px;">
+          <div style="width:100px;height:34px;background:repeating-linear-gradient(90deg,#111 0,#111 2px,#fff 2px,#fff 3.5px);"></div>
+          <div style="width:100px;text-align:center;font-size:7px;color:#333;font-family:monospace;margin-top:1px;">{{BARCODE}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="e-col-right" style="max-width:260px;">
+      <span class="e-label strong">Properties:</span>
+      <span class="e-label italic" style="margin-left:6px;">Text selected</span>
+      <div class="sp6"></div>
+
+      <div class="e-props-group">
+        <span class="e-label strong" style="font-size:12px;">Position &amp; Size</span>
+        <div class="e-props-row"><span class="e-props-label">X</span><input class="e-input" value="12 px" style="width:80px;" /></div>
+        <div class="e-props-row"><span class="e-props-label">Y</span><input class="e-input" value="14 px" style="width:80px;" /></div>
+        <div class="e-props-row"><span class="e-props-label">Rotate</span><input class="e-input" value="0°" style="width:80px;" /></div>
+      </div>
+
+      <div class="e-props-group">
+        <span class="e-label strong" style="font-size:12px;">Typography</span>
+        <div class="e-props-row"><span class="e-props-label">Font</span><select class="e-combo" style="width:130px;"><option>Helvetica</option><option>OCR-B</option></select></div>
+        <div class="e-props-row"><span class="e-props-label">Size</span><input class="e-input" value="16" style="width:48px;" /><span class="e-label" style="margin-left:4px;">pt</span></div>
+        <div class="e-props-row">
+          <span class="e-props-label">Style</span>
+          <span class="e-icon-btn on" style="margin-right:3px;"><b>B</b></span>
+          <span class="e-icon-btn" style="margin-right:3px;"><i>I</i></span>
+          <span class="e-icon-btn">U</span>
+        </div>
+        <div class="e-props-row">
+          <span class="e-props-label">Align</span>
+          <span class="e-icon-btn on" style="margin-right:3px;">⬅</span>
+          <span class="e-icon-btn" style="margin-right:3px;">↔</span>
+          <span class="e-icon-btn">➡</span>
+        </div>
+      </div>
+
+      <div class="e-props-group">
+        <span class="e-label strong" style="font-size:12px;">Image Dot Gain</span>
+        <div class="e-curve">
+          <svg viewBox="0 0 160 80" preserveAspectRatio="none">
+            <line x1="0" y1="80" x2="160" y2="80" stroke="#555" stroke-width="1"/>
+            <line x1="0" y1="0"  x2="0"   y2="80" stroke="#555" stroke-width="1"/>
+            <path d="M0,80 C40,80 60,44 80,26 S130,4 160,0" fill="none" stroke="#5b9cff" stroke-width="2"/>
+            <circle cx="80" cy="26" r="4" fill="#5b9cff"/>
+            <circle cx="40" cy="58" r="4" fill="#5b9cff"/>
+          </svg>
+        </div>
+        <div class="e-props-row"><span class="e-props-label">Density</span><input type="range" style="flex:1;" /></div>
+      </div>
+
+      <div class="e-row">
+        <button class="e-btn" style="font-size:12px;">Duplicate</button>
+        <button class="e-btn" style="font-size:12px;">Delete</button>
+        <button class="e-btn" style="font-size:12px;">Lock</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="e-status">
+    <hr class="e-sep" />
+    <div class="e-row">
+      <span class="e-label">4″ × 6″ @ 203 dpi  |  x: 12  y: 14  |  6 elements</span>
+      <span class="e-label" style="color:var(--green);margin-left:8px;">● zpl-forge ready</span>
+    </div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     EDIT ZPL MODE  (existing, unchanged)
+══════════════════════════════════════════ -->
+<div id="s-edit" class="screen">
+<div class="egui-panel">
+
+  <div class="e-heading">ZPL Printer Tool</div>
+  <div class="sp10"></div>
+
+  <div class="e-row">
+    <button class="e-btn">📁 Load Template</button>
+    <span class="e-label mono">📄 shipping-label.zpl</span>
+  </div>
+  <div class="sp10"></div>
+
+  <div class="e-row">
+    <span class="e-label">Mode:</span>
+    <span class="e-sel">📄 Use</span>
+    <span class="e-sel">🎨 Design</span>
+    <span class="e-sel on">✏ Edit ZPL</span>
+  </div>
+  <div class="sp6"></div>
+
+  <div class="e-row">
+    <span class="e-label">Printer:</span>
+    <select class="e-combo" style="width:180px;"><option>ZebraZPL (USB)</option></select>
+    <button class="e-btn">🔄</button>
+  </div>
+  <div class="sp10"></div>
+  <hr class="e-sep" />
+  <div class="sp10"></div>
+
+  <div class="e-cols">
+    <div class="e-col-left">
+      <span class="e-label strong">ZPL Code:</span>
+      <div class="sp4"></div>
+      <textarea class="e-code">^XA
+^FO50,50^A0N,40,40^FDACME CORP^FS
+^FO50,100^A0N,20,20^FDProduct Label^FS
+^FO50,140^A0N,20,20^FD{{SKU}}^FS
+^FO50,170^A0N,20,20^FD{{DESCRIPTION}}^FS
+^FO50,300^BY2^BCN,60,Y,N,N^FD{{BARCODE}}^FS
+^XZ</textarea>
+      <div class="sp10"></div>
+      <div class="e-row">
+        <button class="e-btn">🖨 Print</button>
+        <div style="width:10px;"></div>
+        <button class="e-btn">👁 Update Preview</button>
+        <div style="width:10px;"></div>
+        <span class="e-label italic">✓ Saved</span>
+      </div>
+    </div>
+    <div class="e-col-right">
+      <span class="e-label strong">Preview:</span>
+      <div class="sp4"></div>
+      <div style="width:280px;height:420px;background:#fff;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;">
+        <span style="color:#aaa;font-size:12px;">ZPL preview renders here</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="e-status">
+    <hr class="e-sep" />
+    <div class="e-row"><span class="e-label">Auto-saved</span></div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     CLIPART PANEL (Design mode sub-view)
+══════════════════════════════════════════ -->
+<div id="s-clipart" class="screen">
+<div class="egui-panel">
+
+  <div class="e-heading">ZPL Printer Tool</div>
+  <div class="sp10"></div>
+  <div class="e-row">
+    <button class="e-btn">📁 Load Template</button>
+    <span class="e-label mono">📄 shipping-label.zpl</span>
+  </div>
+  <div class="sp10"></div>
+  <div class="e-row">
+    <span class="e-label">Mode:</span>
+    <span class="e-sel">📄 Use</span>
+    <span class="e-sel on">🎨 Design</span>
+    <span class="e-sel">✏ Edit ZPL</span>
+  </div>
+  <div class="sp10"></div>
+  <hr class="e-sep" />
+  <div class="sp10"></div>
+
+  <!-- horizontal_top: clipart browser | canvas -->
+  <div class="e-cols">
+
+    <!-- Left: clipart browser (ScrollArea) -->
+    <div class="e-col-left" style="min-width:320px;max-width:360px;">
+      <span class="e-label strong">Clipart Library</span>
+      <div class="sp4"></div>
+      <div class="e-row">
+        <select class="e-combo" style="width:130px;">
+          <option>All Categories</option>
+          <option>Shipping</option>
+          <option>Hazard &amp; Safety</option>
+          <option>Animals</option>
+          <option>Decorative</option>
+        </select>
+        <input class="e-input" placeholder="Search…" style="flex:1;" />
+        <button class="e-btn">Search</button>
+      </div>
+      <div class="sp6"></div>
+
+      <div class="clip-grid-wrap">
+        <div class="clip-section-label">Shipping &amp; Logistics</div>
+        <div class="clip-grid">
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+              <polyline points="4,13 22,7 40,13"/>
+              <polygon points="4,13 4,37 22,41 40,37 40,13 22,7"/>
+              <line x1="22" y1="7" x2="22" y2="41"/>
+              <line x1="4" y1="21" x2="22" y2="25"/><line x1="40" y1="21" x2="22" y2="25"/>
+            </svg><span>Package</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+              <rect x="2" y="14" width="24" height="16" rx="1"/>
+              <path d="M26 18 L26 30 L40 30 L40 22 L34 14 L26 14"/>
+              <line x1="26" y1="22" x2="40" y2="22"/>
+              <circle cx="9"  cy="33" r="4" fill="#111" stroke="none"/>
+              <circle cx="33" cy="33" r="4" fill="#111" stroke="none"/>
+            </svg><span>Truck</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="36" x2="22" y2="10"/>
+              <polyline points="12,20 22,10 32,20"/>
+              <line x1="10" y1="38" x2="34" y2="38"/>
+            </svg><span>This Side Up</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round">
+              <line x1="22" y1="5"  x2="22" y2="39"/>
+              <line x1="5"  y1="22" x2="39" y2="22"/>
+              <line x1="9"  y1="9"  x2="35" y2="35"/>
+              <line x1="35" y1="9"  x2="9"  y2="35"/>
+              <line x1="15" y1="7"  x2="22" y2="5"/><line x1="29" y1="7"  x2="22" y2="5"/>
+              <line x1="15" y1="37" x2="22" y2="39"/><line x1="29" y1="37" x2="22" y2="39"/>
+              <line x1="7"  y1="15" x2="5"  y2="22"/><line x1="7"  y1="29" x2="5"  y2="22"/>
+              <line x1="37" y1="15" x2="39" y2="22"/><line x1="37" y1="29" x2="39" y2="22"/>
+            </svg><span>Keep Cold</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="22,4 40,38 4,38"/>
+              <line x1="22" y1="16" x2="22" y2="27"/>
+              <circle cx="22" cy="32" r="2" fill="#111" stroke="none"/>
+            </svg><span>Warning</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 6 L30 6 Q34 20 22 26 Q10 20 14 6 Z"/>
+              <line x1="22" y1="26" x2="22" y2="38"/>
+              <line x1="14" y1="38" x2="30" y2="38"/>
+            </svg><span>Fragile</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="10" y="20" width="24" height="18" rx="3"/>
+              <path d="M15 20 L15 13 A7 7 0 0 1 29 13 L29 20"/>
+              <circle cx="22" cy="29" r="3" fill="#111" stroke="none"/>
+              <line x1="22" y1="29" x2="22" y2="34"/>
+            </svg><span>Secure</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round">
+              <circle cx="22" cy="22" r="16"/>
+              <line x1="9" y1="9" x2="35" y2="35"/>
+            </svg><span>No Stack</span>
+          </div>
+
+        </div>
+
+        <div class="sp10"></div>
+        <div class="clip-section-label">Animals</div>
+        <div class="clip-grid">
+
+          <div class="clip-cell on">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round">
+              <ellipse cx="22" cy="28" rx="16" ry="11"/>
+              <path d="M6 28 Q11 20 16 28 Q21 36 26 28 Q31 20 36 28"/>
+              <path d="M10 19 Q16 10 22 14 Q28 10 34 19"/>
+              <path d="M8 36 Q14 42 22 40 Q30 42 36 36"/>
+            </svg><span>Zebra</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="22" cy="24" r="13"/>
+              <circle cx="11" cy="13" r="5"/>
+              <circle cx="33" cy="13" r="5"/>
+              <circle cx="17" cy="22" r="2" fill="#111" stroke="none"/>
+              <circle cx="27" cy="22" r="2" fill="#111" stroke="none"/>
+              <path d="M17 29 Q22 33 27 29"/>
+            </svg><span>Bear</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 6 L6 28 L14 25 L10 40 L22 32 L34 40 L30 25 L38 28 Z"/>
+            </svg><span>Eagle</span>
+          </div>
+
+          <div class="clip-cell">
+            <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round">
+              <ellipse cx="22" cy="28" rx="10" ry="8" fill="#111" stroke="none"/>
+              <circle cx="14" cy="17" r="4" fill="#111" stroke="none"/>
+              <circle cx="22" cy="14" r="4" fill="#111" stroke="none"/>
+              <circle cx="30" cy="17" r="4" fill="#111" stroke="none"/>
+            </svg><span>Paw</span>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sp6"></div>
+      <div class="e-row">
+        <button class="e-btn" style="background:var(--sel);">Insert Selected — Zebra</button>
+        <button class="e-btn">★ Favourite</button>
+      </div>
+    </div>
+
+    <!-- Right: canvas preview -->
+    <div class="e-col-right">
+      <span class="e-label strong">Canvas:</span>
+      <div class="sp4"></div>
+      <div class="label-canvas" style="width:200px;height:300px;">
+        <div class="el el-text" style="top:12px;left:10px;font-size:14px;font-weight:700;">ACME CORP</div>
+        <div class="el-var" style="top:46px;left:10px;">{{SKU}}</div>
+        <div class="el sel-outline" style="right:10px;top:10px;width:58px;height:58px;">
+          <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round" style="width:58px;height:58px;display:block;">
+            <ellipse cx="22" cy="28" rx="16" ry="11"/>
+            <path d="M6 28 Q11 20 16 28 Q21 36 26 28 Q31 20 36 28"/>
+            <path d="M10 19 Q16 10 22 14 Q28 10 34 19"/>
+          </svg>
+          <div class="handle h-tl"></div><div class="handle h-tr"></div>
+          <div class="handle h-bl"></div><div class="handle h-br"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="e-status">
+    <hr class="e-sep" />
+    <div class="e-row"><span class="e-label">Clipart selected: Zebra — click Insert to add to label</span></div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     BATCH PRINT
+══════════════════════════════════════════ -->
+<div id="s-batch" class="screen">
+<div class="egui-panel">
+
+  <div class="e-heading">ZPL Printer Tool</div>
+  <div class="sp10"></div>
+  <div class="e-row">
+    <button class="e-btn">📁 Load Template</button>
+    <span class="e-label mono">📄 shipping-label.zpl</span>
+  </div>
+  <div class="sp10"></div>
+  <div class="e-row">
+    <span class="e-label">Mode:</span>
+    <span class="e-sel">📄 Use</span>
+    <span class="e-sel">🎨 Design</span>
+    <span class="e-sel">✏ Edit ZPL</span>
+    <div class="e-sep-v"></div>
+    <span class="e-sel on">📋 Batch Print</span>
+  </div>
+  <div class="sp6"></div>
+  <div class="e-row">
+    <span class="e-label">Printer:</span>
+    <select class="e-combo" style="width:180px;"><option>ZebraZPL (USB)</option></select>
+    <button class="e-btn">🔄</button>
+  </div>
+  <div class="sp10"></div>
+  <hr class="e-sep" />
+  <div class="sp10"></div>
+
+  <div class="e-cols">
+    <div class="e-col-left" style="min-width:460px;">
+
+      <span class="e-label strong">1. Import Data</span>
+      <div class="sp4"></div>
+      <div class="e-row">
+        <button class="e-btn">📂 Load CSV…</button>
+        <span class="e-label" style="color:var(--green);">✓ customers.csv — 42 rows</span>
+      </div>
+      <div class="sp10"></div>
+
+      <span class="e-label strong">2. Map columns → variables</span>
+      <div class="sp6"></div>
+      <table style="border-collapse:collapse;font-size:12px;">
+        <thead><tr>
+          <th style="text-align:left;color:var(--muted);padding:0 10px 6px 0;font-weight:500;">Variable</th>
+          <th style="color:var(--muted);padding:0 10px 6px;font-weight:500;"></th>
+          <th style="text-align:left;color:var(--muted);padding:0 10px 6px;font-weight:500;">CSV Column</th>
+          <th style="text-align:left;color:var(--muted);padding:0 0 6px;font-weight:500;">Preview</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:5px 10px 5px 0;font-family:var(--mono);font-size:11px;color:#5b9cff;">{{NAME}}</td>
+            <td style="padding:5px 10px;color:var(--muted);">←</td>
+            <td style="padding:5px 10px 5px 0;"><select class="e-combo" style="font-size:11px;padding:2px 4px;"><option>Name</option></select></td>
+            <td style="padding:5px 0;font-size:11px;color:var(--muted);">Alice Johnson</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:5px 10px 5px 0;font-family:var(--mono);font-size:11px;color:#5b9cff;">{{ADDRESS}}</td>
+            <td style="padding:5px 10px;color:var(--muted);">←</td>
+            <td style="padding:5px 10px 5px 0;"><select class="e-combo" style="font-size:11px;padding:2px 4px;"><option>Address</option></select></td>
+            <td style="padding:5px 0;font-size:11px;color:var(--muted);">123 Main St</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:5px 10px 5px 0;font-family:var(--mono);font-size:11px;color:#5b9cff;">{{BARCODE}}</td>
+            <td style="padding:5px 10px;color:var(--muted);">←</td>
+            <td style="padding:5px 10px 5px 0;"><select class="e-combo" style="font-size:11px;padding:2px 4px;"><option>Barcode</option></select></td>
+            <td style="padding:5px 0;font-size:11px;color:var(--muted);">892741000421</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="sp10"></div>
+
+      <span class="e-label strong">3. Preview</span>
+      <div class="sp4"></div>
+      <div style="display:flex;gap:6px;overflow-x:auto;padding:2px;">
+        <div class="mini-lbl on"><b>Alice Johnson</b><span>123 Main St</span><span style="color:#777;">Portland OR</span></div>
+        <div class="mini-lbl"><b>Bob Chen</b><span>45 Oak Ave</span><span style="color:#777;">Seattle WA</span></div>
+        <div class="mini-lbl"><b>Carol Davis</b><span>789 Pine Rd</span><span style="color:#777;">Eugene OR</span></div>
+        <div class="mini-lbl" style="background:var(--widget);border-style:dashed;justify-content:center;align-items:center;color:var(--muted);">+39</div>
+      </div>
+      <div class="sp10"></div>
+
+      <div class="e-row">
+        <span class="e-label">Copies:</span>
+        <input class="e-input" value="1" style="width:40px;" />
+        <span class="e-label" style="margin-left:8px;">Range:</span>
+        <input class="e-input" value="All (1–42)" style="width:100px;" />
+        <button class="e-btn" style="margin-left:10px;background:var(--sel);">▶ Start Print Job</button>
+      </div>
+    </div>
+
+    <div class="e-col-right">
+      <span class="e-label strong">Queue</span>
+      <div class="sp6"></div>
+      <span class="e-label">42 labels · 1 copy</span>
+      <div class="sp4"></div>
+      <div style="width:100%;height:6px;background:var(--widget);border-radius:3px;overflow:hidden;"><div style="width:0%;height:100%;background:#5b9cff;"></div></div>
+      <div class="sp4"></div>
+      <span class="e-label italic">Ready — awaiting start</span>
+      <div class="sp10"></div>
+      <button class="e-btn">Export ZPL Files…</button>
+    </div>
+  </div>
+
+  <div class="e-status">
+    <hr class="e-sep" />
+    <div class="e-row"><span class="e-label">Ready</span></div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     TEMPLATES
+══════════════════════════════════════════ -->
+<div id="s-tmpl" class="screen">
+<div class="egui-panel">
+
+  <div class="e-heading">ZPL Printer Tool</div>
+  <div class="sp10"></div>
+  <div class="e-row">
+    <button class="e-btn">📁 Load Template</button>
+  </div>
+  <div class="sp10"></div>
+  <div class="e-row">
+    <span class="e-label">Mode:</span>
+    <span class="e-sel">📄 Use</span>
+    <span class="e-sel">🎨 Design</span>
+    <span class="e-sel">✏ Edit ZPL</span>
+    <div class="e-sep-v"></div>
+    <span class="e-sel on">🗂 Templates</span>
+  </div>
+  <div class="sp10"></div>
+  <hr class="e-sep" />
+  <div class="sp10"></div>
+
+  <div class="e-cols">
+    <div class="e-col-left" style="min-width:260px;max-width:280px;">
+      <span class="e-label strong">Saved Templates</span>
+      <div class="sp4"></div>
+      <input class="e-input" placeholder="Search…" style="width:100%;" />
+      <div class="sp6"></div>
+      <div class="tmpl-item on">
+        <div class="tn">Shipping Label v2</div>
+        <div class="tm">4″ × 6″ · {{NAME}} {{ADDRESS}} {{BARCODE}}</div>
+      </div>
+      <div class="tmpl-item">
+        <div class="tn">Product Tag</div>
+        <div class="tm">2″ × 1″ · {{SKU}} {{PRICE}}</div>
+      </div>
+      <div class="tmpl-item">
+        <div class="tn">Return Label</div>
+        <div class="tm">4″ × 6″ · {{ORDER_ID}}</div>
+      </div>
+      <div class="tmpl-item">
+        <div class="tn">Asset Tag</div>
+        <div class="tm">2″ × 1″ · static</div>
+      </div>
+      <div class="sp6"></div>
+      <div class="e-row">
+        <button class="e-btn">New Template</button>
+        <button class="e-btn">Import .zpl…</button>
+      </div>
+    </div>
+
+    <div class="e-col-right">
+      <span class="e-label strong">Shipping Label v2</span>
+      <div class="sp6"></div>
+      <!-- thumbnail -->
+      <div style="width:160px;height:240px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.5);padding:8px;position:relative;font-size:8px;color:#222;display:flex;flex-direction:column;gap:3px;">
+        <span style="font-size:12px;font-weight:700;">ACME CORP</span>
+        <span style="color:#555;font-size:7px;">Product Label</span>
+        <span style="background:rgba(91,156,255,.1);border:1px dashed #3d6fbf;color:#336;font-size:7px;padding:1px 3px;">{{SKU}}</span>
+        <span style="background:rgba(91,156,255,.1);border:1px dashed #3d6fbf;color:#336;font-size:7px;padding:1px 3px;">{{DESCRIPTION}}</span>
+        <div style="position:absolute;right:8px;top:8px;width:44px;height:44px;">
+          <svg viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round">
+            <ellipse cx="22" cy="28" rx="16" ry="11"/>
+            <path d="M6 28 Q11 20 16 28 Q21 36 26 28 Q31 20 36 28"/>
+            <path d="M10 19 Q16 10 22 14 Q28 10 34 19"/>
+          </svg>
+        </div>
+        <div style="margin-top:auto;height:22px;background:repeating-linear-gradient(90deg,#111 0,#111 1.5px,#fff 1.5px,#fff 3px);"></div>
+        <span style="font-family:monospace;font-size:6px;color:#555;text-align:center;">{{BARCODE}}</span>
+      </div>
+      <div class="sp10"></div>
+      <div class="e-row">
+        <button class="e-btn">Open in Editor</button>
+        <button class="e-btn">Batch Print…</button>
+        <button class="e-btn">Duplicate</button>
+        <button class="e-btn">Export .zpl</button>
+        <button class="e-btn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="e-status">
+    <hr class="e-sep" />
+    <div class="e-row"><span class="e-label">Ready</span></div>
+  </div>
+
+</div>
+</div>
+
+
+<script>
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  document.querySelectorAll('.wbtn').forEach(b => b.classList.remove('on'));
+  document.getElementById('s-'+id).classList.add('on');
+  event.target.classList.add('on');
+}
+</script>
+</body>
+</html>

@@ -58,8 +58,11 @@ Cargo.lock
 CLAUDE.md
 .claude/
 PLAN.md
+TASKS.md
 *.zpl-design
 project-brief.md
+memory/
+dashboard.html
 
 # IDE
 .vscode/
