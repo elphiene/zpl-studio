@@ -59,6 +59,7 @@ CLAUDE.md
 .claude/
 PLAN.md
 *.zpl-design
+project-brief.md
 
 # IDE
 .vscode/
