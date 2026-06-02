@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=ZPL Printer Tool
+Comment=Template-based ZPL label printer with offline preview
+Exec=zpl-printer
+Icon=zpl-printer
+Terminal=false
+Type=Application
+Categories=Office;Printing;Utility;
+Keywords=printer;label;zpl;zebra;
+StartupNotify=true

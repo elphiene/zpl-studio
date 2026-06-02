@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:translateX="10.8"
+        android:translateY="10.8">
+        <!-- Printer icon simplified -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 30,35 L 78,35 L 78,50 L 30,50 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 25,50 L 83,50 L 83,70 L 25,70 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 30,70 L 78,70 L 78,85 L 30,85 Z" />
+        <!-- ZPL text -->
+        <path
+            android:fillColor="#000000"
+            android:pathData="M 38,55 L 48,55 L 38,63 L 48,63 L 38,55 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M 51,55 L 56,55 L 56,63 L 51,63 Z M 51,55 L 56,55 L 56,59 L 51,59 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M 59,55 L 64,55 L 64,63 L 59,63 Z" />
+    </group>
+</vector>

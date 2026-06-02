@@ -1,0 +1,31 @@
+EASTERN HEALTH SERVICE DESK LOGO
+==================================
+
+✓ Logo received: EH Service Desk logo with blue text and yellow/gold arc
+
+TO COMPLETE SETUP:
+------------------
+
+1. Save the Eastern Health Service Desk logo (shared in chat) as: logo.png
+2. Place it in this directory (assets/)
+
+LOGO SPECIFICATIONS:
+--------------------
+- Format: PNG (preferred) or JPG
+- Recommended size: 200x200 pixels or smaller
+- Background: Transparent (preferred) or white
+- The logo will be automatically converted to black & white for thermal printing
+- Logo position: Top-right corner of each label
+
+The logo features:
+- "EH" in blue text
+- "Service Desk" text below
+- Yellow/gold curved arc design element
+
+ALTERNATIVE OPTIONS:
+--------------------
+If you need a placeholder for testing:
+- Run: python create_placeholder_logo.py (from project root)
+- Or use any PNG image and rename it to logo.png
+
+Once logo.png is in place, run: python verify_setup.py

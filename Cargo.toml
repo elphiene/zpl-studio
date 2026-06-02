@@ -1,0 +1,30 @@
+[package]
+name = "zpl-printer"
+version = "2.0.0"
+edition = "2021"
+description = "ZPL label printer with template support and offline preview"
+
+[dependencies]
+eframe = "0.27"
+egui = "0.27"
+egui_extras = { version = "0.27", features = ["image"] }
+image = "0.25"
+regex = "1.10"
+rfd = "0.14"
+zpl-forge = "0.1.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Graphics_Printing",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+
+# No additional dependencies needed for Unix - uses system lp command
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Better optimization
+strip = true        # Strip symbols for smaller binary
+panic = "abort"     # Smaller binary

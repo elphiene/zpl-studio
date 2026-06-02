@@ -1,0 +1,158 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master, 'claude/**' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build
+      run: cargo build --release --verbose
+
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zpl-printer-windows-${{ github.sha }}
+        path: target/release/zpl-printer.exe
+        retention-days: 30
+
+  build-linux:
+    name: Build Linux AppImage
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libcups2-dev libgtk-3-dev libssl-dev pkg-config
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: linux-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build
+      run: cargo build --release --verbose
+
+    - name: Download linuxdeploy and appimagetool
+      run: |
+        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+
+    - name: Create AppImage
+      run: |
+        mkdir -p AppDir/usr/bin
+        mkdir -p AppDir/usr/share/applications
+        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+        # Create a simple icon if it doesn't exist
+        if [ ! -f scripts/zpl-printer.png ]; then
+          # Install imagemagick for icon creation
+          sudo apt-get install -y imagemagick
+          # Create a simple 256x256 icon with text
+          convert -size 256x256 xc:white \
+            -gravity center \
+            -pointsize 48 \
+            -fill black \
+            -annotate +0+0 "ZPL" \
+            -fill blue \
+            -draw "rectangle 20,20 236,236" \
+            -fill white \
+            -draw "rectangle 25,25 231,231" \
+            -fill black \
+            -annotate +0+0 "ZPL" \
+            scripts/zpl-printer.png
+        fi
+
+        cp target/release/zpl-printer AppDir/usr/bin/
+        cp scripts/zpl-printer.desktop AppDir/usr/share/applications/
+        cp scripts/zpl-printer.png AppDir/usr/share/icons/hicolor/256x256/apps/
+
+        ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zpl-printer-linux-${{ github.sha }}
+        path: ZPL_Printer_Tool*.AppImage
+        retention-days: 30
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          android/.gradle
+        key: android-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+        restore-keys: |
+          android-gradle-
+
+    - name: Make gradlew executable
+      run: chmod +x android/gradlew
+      working-directory: .
+
+    - name: Build APK
+      run: ./gradlew assembleRelease
+      working-directory: android
+
+    - name: Upload Android artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zpl-printer-android-${{ github.sha }}
+        path: android/app/build/outputs/apk/release/*.apk
+        retention-days: 30
