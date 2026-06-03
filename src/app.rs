@@ -2,18 +2,20 @@
 
 use crate::persistence;
 use crate::printer::{list_printers, print_raw_zpl, PrintJob, PrinterInfo};
-use crate::ui::{EditModeAction, EditModePanel, LoadModeAction, LoadModePanel};
+use crate::ui::{DesignModeAction, DesignModePanel, EditModeAction, EditModePanel, LoadModeAction, LoadModePanel};
 use eframe::egui;
 
 #[derive(PartialEq)]
 enum AppMode {
     Load,
+    Design,
     Edit,
 }
 
 pub struct ZplPrinterApp {
     mode: AppMode,
     load_panel: LoadModePanel,
+    design_panel: DesignModePanel,
     edit_panel: EditModePanel,
     available_printers: Vec<PrinterInfo>,
     selected_printer: Option<String>,
@@ -28,6 +30,7 @@ impl Default for ZplPrinterApp {
         Self {
             mode: AppMode::Load,
             load_panel: LoadModePanel::default(),
+            design_panel: DesignModePanel::default(),
             edit_panel: EditModePanel::default(),
             available_printers: printers,
             selected_printer,
@@ -91,6 +94,28 @@ impl ZplPrinterApp {
         }
     }
 
+    fn handle_design_mode_action(&mut self, action: DesignModeAction) {
+        match action {
+            DesignModeAction::Print => {
+                if let Some(printer_name) = &self.selected_printer {
+                    let zpl = self.design_panel.get_zpl();
+                    let job = PrintJob {
+                        printer_name: printer_name.clone(),
+                        document_name: "ZPL Studio Label".to_string(),
+                        zpl_data: zpl,
+                    };
+                    match print_raw_zpl(&job) {
+                        Ok(_) => self.status_message = format!("Printed to {}", printer_name),
+                        Err(e) => self.status_message = format!("Print failed: {}", e),
+                    }
+                } else {
+                    self.status_message = "No printer selected".to_string();
+                }
+            }
+            DesignModeAction::None => {}
+        }
+    }
+
     fn handle_edit_mode_action(&mut self, action: EditModeAction, ctx: &egui::Context) {
         match action {
             EditModeAction::AutoSave => {
@@ -151,7 +176,7 @@ impl eframe::App for ZplPrinterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Header
-            ui.heading("ZPL Printer Tool");
+            ui.heading("ZPL Studio");
             ui.add_space(10.0);
 
             // Global template loader
@@ -192,16 +217,13 @@ impl eframe::App for ZplPrinterApp {
             // Mode selector
             ui.horizontal(|ui| {
                 ui.label("Mode:");
-                if ui
-                    .selectable_label(self.mode == AppMode::Load, "📄 Use")
-                    .clicked()
-                {
+                if ui.selectable_label(self.mode == AppMode::Load, "📄 Use").clicked() {
                     self.mode = AppMode::Load;
                 }
-                if ui
-                    .selectable_label(self.mode == AppMode::Edit, "✏ Edit")
-                    .clicked()
-                {
+                if ui.selectable_label(self.mode == AppMode::Design, "🎨 Design").clicked() {
+                    self.mode = AppMode::Design;
+                }
+                if ui.selectable_label(self.mode == AppMode::Edit, "✏ Edit ZPL").clicked() {
                     self.mode = AppMode::Edit;
                 }
             });
@@ -244,12 +266,14 @@ impl eframe::App for ZplPrinterApp {
             // Mode-specific panel - collect actions
             enum PanelAction {
                 Load(LoadModeAction),
+                Design(DesignModeAction),
                 Edit(EditModeAction),
             }
 
             let has_template = self.load_panel.file_path.is_some();
             let action = match self.mode {
                 AppMode::Load => PanelAction::Load(self.load_panel.ui(ui)),
+                AppMode::Design => PanelAction::Design(self.design_panel.ui(ui)),
                 AppMode::Edit => PanelAction::Edit(self.edit_panel.ui(ui, has_template)),
             };
 
@@ -264,6 +288,7 @@ impl eframe::App for ZplPrinterApp {
             // Handle actions after UI rendering is complete
             match action {
                 PanelAction::Load(a) => self.handle_load_mode_action(a, ctx),
+                PanelAction::Design(a) => self.handle_design_mode_action(a),
                 PanelAction::Edit(a) => self.handle_edit_mode_action(a, ctx),
             }
         });

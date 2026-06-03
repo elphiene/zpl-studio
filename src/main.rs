@@ -6,6 +6,7 @@
 use eframe::egui;
 
 mod app;
+mod canvas;
 mod persistence;
 mod preview;
 mod printer;
@@ -17,12 +18,12 @@ fn main() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1000.0, 600.0])
             .with_resizable(true)
-            .with_title("ZPL Printer Tool"),
+            .with_title("ZPL Studio"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "ZPL Printer",
+        "ZPL Studio",
         options,
         Box::new(|_cc| Box::<app::ZplPrinterApp>::default()),
     )
