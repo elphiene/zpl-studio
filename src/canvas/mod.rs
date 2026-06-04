@@ -9,6 +9,7 @@ pub const LABEL_PRESETS: &[(&str, f32, f32)] = &[
     ("4\" × 6\" (shipping)",      4.0, 6.0),
     ("4\" × 2\"",                 4.0, 2.0),
     ("4\" × 3\"",                 4.0, 3.0),
+    ("2\" × 1.2\"",               2.0, 1.2),
     ("2\" × 1\" (product tag)",   2.0, 1.0),
     ("2.25\" × 1.25\"",           2.25, 1.25),
     ("3\" × 2\"",                 3.0, 2.0),
@@ -19,7 +20,7 @@ pub struct TextElement {
     pub id: u64,
     pub pos: egui::Pos2, // inches from top-left of label
     pub content: String,
-    pub font_size: u32, // ZPL dot height
+    pub font_size: u32, // points (1pt = 1/72 inch); convert to dots in zpl_gen
     pub bold: bool,
 }
 
@@ -74,7 +75,7 @@ impl CanvasState {
             id,
             pos: egui::pos2(0.25 + offset, 0.25 + offset),
             content: "Text".to_string(),
-            font_size: 30,
+            font_size: 18,
             bold: false,
         }));
         self.selected_id = Some(id);

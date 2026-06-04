@@ -12,12 +12,24 @@ pub fn generate(canvas: &CanvasState) -> String {
             CanvasElement::Text(t) => {
                 let x = (t.pos.x * canvas.dpi as f32) as u32;
                 let y = (t.pos.y * canvas.dpi as f32) as u32;
-                // ZPL font: A=standard, B=bold-ish (using height for both width and height)
-                let font = if t.bold { "B" } else { "A" };
-                out.push_str(&format!(
-                    "^FO{},{}\n^A{}N,{},{}\n^FD{}^FS\n",
-                    x, y, font, t.font_size, t.font_size, t.content
-                ));
+                // Convert pt → dots: 1pt = 1/72 inch; dots = pt * dpi / 72
+                let h = ((t.font_size as f32 * canvas.dpi as f32 / 72.0) as u32).max(4);
+                // ^A0N = scalable CG Triumvirate font. Natural width is ~55% of height;
+                // h==h looks condensed/bold. w=0 is auto-proportion but breaks zpl-forge preview.
+                let w = (h * 55 / 100).max(4);
+                if t.bold {
+                    // Simulate bold by printing the field twice with a 1-dot x-offset
+                    out.push_str(&format!(
+                        "^FO{},{}\n^A0N,{},{}\n^FD{}^FS\n^FO{},{}\n^A0N,{},{}\n^FD{}^FS\n",
+                        x, y, h, w, t.content,
+                        x + 1, y, h, w, t.content
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "^FO{},{}\n^A0N,{},{}\n^FD{}^FS\n",
+                        x, y, h, w, t.content
+                    ));
+                }
             }
         }
     }
@@ -49,11 +61,43 @@ mod tests {
             id: 1,
             pos: egui::pos2(0.5, 0.5),
             content: "Hello".to_string(),
-            font_size: 30,
+            font_size: 36, // 36pt @ 203dpi = 101 dots
             bold: false,
         }));
         let zpl = generate(&canvas);
         assert!(zpl.contains("^FO101,101"));
+        assert!(zpl.contains("^A0N,101,55")); // w = 101*55/100 = 55
         assert!(zpl.contains("^FDHello^FS"));
+    }
+
+    #[test]
+    fn test_generate_bold_text_element() {
+        let mut canvas = CanvasState::new(4.0, 6.0, 203);
+        canvas.elements.push(CanvasElement::Text(TextElement {
+            id: 1,
+            pos: egui::pos2(0.5, 0.5),
+            content: "Bold".to_string(),
+            font_size: 36, // 36pt @ 203dpi = 101 dots
+            bold: true,
+        }));
+        let zpl = generate(&canvas);
+        // Bold prints the field twice; second pass is offset by 1 dot in x
+        assert!(zpl.contains("^FO101,101"));
+        assert!(zpl.contains("^FO102,101"));
+        assert_eq!(zpl.matches("^FDBold^FS").count(), 2);
+    }
+
+    #[test]
+    fn test_pt_to_dots_conversion() {
+        let mut canvas = CanvasState::new(4.0, 6.0, 600);
+        canvas.elements.push(CanvasElement::Text(TextElement {
+            id: 1,
+            pos: egui::pos2(0.0, 0.0),
+            content: "Hi".to_string(),
+            font_size: 12, // 12pt @ 600dpi = 100 dots
+            bold: false,
+        }));
+        let zpl = generate(&canvas);
+        assert!(zpl.contains("^A0N,100,55")); // w = 100*55/100 = 55
     }
 }

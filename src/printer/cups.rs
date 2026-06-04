@@ -3,6 +3,7 @@
 use crate::printer::types::{PrintJob, PrinterError, PrinterInfo};
 use std::process::Command;
 use std::io::Write;
+use std::fs;
 
 /// List all available CUPS printers using lpstat command
 pub fn list_printers() -> Result<Vec<PrinterInfo>, PrinterError> {
@@ -60,33 +61,26 @@ pub fn list_printers() -> Result<Vec<PrinterInfo>, PrinterError> {
 
 /// Print raw ZPL data to a CUPS printer using lp command
 pub fn print_raw_zpl(job: &PrintJob) -> Result<(), PrinterError> {
-    // Use lp command to print raw data
-    let mut child = Command::new("lp")
+    // Write ZPL to a temp file — more reliable than stdin for Zebra raw queues
+    let tmp_path = std::env::temp_dir().join("zpl_studio_print.zpl");
+    fs::write(&tmp_path, job.zpl_data.as_bytes())
+        .map_err(|e| PrinterError::PrintFailed(
+            format!("Failed to write temp ZPL file: {}", e)
+        ))?;
+
+    let status = Command::new("lp")
         .arg("-d")
         .arg(&job.printer_name)
-        .arg("-o")
-        .arg("raw")  // Important: print raw data without processing
+        .arg("-oraw")
         .arg("-t")
         .arg(&job.document_name)
-        .stdin(std::process::Stdio::piped())
-        .spawn()
+        .arg(&tmp_path)
+        .status()
         .map_err(|e| PrinterError::OpenFailed(
             format!("Failed to start lp command: {}", e)
         ))?;
 
-    // Write ZPL data to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(job.zpl_data.as_bytes())
-            .map_err(|e| PrinterError::PrintFailed(
-                format!("Failed to write ZPL data: {}", e)
-            ))?;
-    }
-
-    // Wait for command to complete
-    let status = child.wait()
-        .map_err(|e| PrinterError::PrintFailed(
-            format!("lp command failed: {}", e)
-        ))?;
+    let _ = fs::remove_file(&tmp_path);
 
     if !status.success() {
         return Err(PrinterError::PrintFailed(
