@@ -1,4 +1,4 @@
-use super::{CanvasElement, CanvasState};
+use super::{CanvasElement, CanvasState, ZplFont};
 
 pub fn generate(canvas: &CanvasState) -> String {
     let mut out = String::from("^XA\n");
@@ -12,23 +12,33 @@ pub fn generate(canvas: &CanvasState) -> String {
             CanvasElement::Text(t) => {
                 let x = (t.pos.x * canvas.dpi as f32) as u32;
                 let y = (t.pos.y * canvas.dpi as f32) as u32;
-                // Convert pt → dots: 1pt = 1/72 inch; dots = pt * dpi / 72
+                // 1pt = 1/72 inch; dots = pt * dpi / 72
                 let h = ((t.font_size as f32 * canvas.dpi as f32 / 72.0) as u32).max(4);
-                // ^A0N = scalable CG Triumvirate font. Natural width is ~55% of height;
-                // h==h looks condensed/bold. w=0 is auto-proportion but breaks zpl-forge preview.
+                // Natural width ~55% of height for ^A0N; other fonts keep same ratio
                 let w = (h * 55 / 100).max(4);
-                if t.bold {
-                    // Simulate bold by printing the field twice with a 1-dot x-offset
+                let letter = t.font.zpl_letter();
+                // Font G is inherently bold; bold flag also triggers double-print
+                let do_bold = t.bold || t.font == ZplFont::G;
+                if do_bold {
                     out.push_str(&format!(
-                        "^FO{},{}\n^A0N,{},{}\n^FD{}^FS\n^FO{},{}\n^A0N,{},{}\n^FD{}^FS\n",
-                        x, y, h, w, t.content,
-                        x + 1, y, h, w, t.content
+                        "^FO{},{}\n^A{}N,{},{}\n^FD{}^FS\n^FO{},{}\n^A{}N,{},{}\n^FD{}^FS\n",
+                        x, y, letter, h, w, t.content,
+                        x + 1, y, letter, h, w, t.content
                     ));
                 } else {
                     out.push_str(&format!(
-                        "^FO{},{}\n^A0N,{},{}\n^FD{}^FS\n",
-                        x, y, h, w, t.content
+                        "^FO{},{}\n^A{}N,{},{}\n^FD{}^FS\n",
+                        x, y, letter, h, w, t.content
                     ));
+                }
+            }
+            CanvasElement::Clipart(c) => {
+                let x = (c.pos.x * canvas.dpi as f32) as u32;
+                let y = (c.pos.y * canvas.dpi as f32) as u32;
+                let w_dots = ((c.width_in * canvas.dpi as f32) as u32).max(1);
+                let h_dots = ((c.height_in * canvas.dpi as f32) as u32).max(1);
+                if let Some(gf) = png_to_gf(c.png_bytes, w_dots, h_dots) {
+                    out.push_str(&format!("^FO{},{}\n{}\n", x, y, gf));
                 }
             }
         }
@@ -38,10 +48,38 @@ pub fn generate(canvas: &CanvasState) -> String {
     out
 }
 
+fn png_to_gf(png_bytes: &[u8], target_w: u32, target_h: u32) -> Option<String> {
+    let img = image::load_from_memory(png_bytes).ok()?;
+    let img = img.resize_exact(target_w, target_h, image::imageops::FilterType::Lanczos3);
+    let gray = img.to_luma8();
+
+    let bytes_per_row = (target_w + 7) / 8;
+    let total_bytes = bytes_per_row * target_h;
+
+    let mut hex = String::with_capacity(total_bytes as usize * 2);
+    for y in 0..target_h {
+        for byte_idx in 0..bytes_per_row {
+            let mut byte_val: u8 = 0;
+            for bit in 0..8u32 {
+                let x = byte_idx * 8 + bit;
+                if x < target_w && gray.get_pixel(x, y)[0] < 128 {
+                    byte_val |= 0x80 >> bit;
+                }
+            }
+            hex.push_str(&format!("{:02X}", byte_val));
+        }
+    }
+
+    Some(format!(
+        "^GFA,{},{},{},{}",
+        total_bytes, total_bytes, bytes_per_row, hex
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canvas::{CanvasState, CanvasElement, TextElement};
+    use crate::canvas::{CanvasElement, CanvasState, TextElement, ZplFont};
     use eframe::egui;
 
     #[test]
@@ -61,12 +99,13 @@ mod tests {
             id: 1,
             pos: egui::pos2(0.5, 0.5),
             content: "Hello".to_string(),
-            font_size: 36, // 36pt @ 203dpi = 101 dots
+            font_size: 36,
             bold: false,
+            font: ZplFont::A,
         }));
         let zpl = generate(&canvas);
         assert!(zpl.contains("^FO101,101"));
-        assert!(zpl.contains("^A0N,101,55")); // w = 101*55/100 = 55
+        assert!(zpl.contains("^A0N,101,55"));
         assert!(zpl.contains("^FDHello^FS"));
     }
 
@@ -77,14 +116,30 @@ mod tests {
             id: 1,
             pos: egui::pos2(0.5, 0.5),
             content: "Bold".to_string(),
-            font_size: 36, // 36pt @ 203dpi = 101 dots
+            font_size: 36,
             bold: true,
+            font: ZplFont::A,
         }));
         let zpl = generate(&canvas);
-        // Bold prints the field twice; second pass is offset by 1 dot in x
         assert!(zpl.contains("^FO101,101"));
         assert!(zpl.contains("^FO102,101"));
         assert_eq!(zpl.matches("^FDBold^FS").count(), 2);
+    }
+
+    #[test]
+    fn test_font_g_is_bold() {
+        let mut canvas = CanvasState::new(4.0, 6.0, 203);
+        canvas.elements.push(CanvasElement::Text(TextElement {
+            id: 1,
+            pos: egui::pos2(0.5, 0.5),
+            content: "Wide".to_string(),
+            font_size: 36,
+            bold: false,
+            font: ZplFont::G,
+        }));
+        let zpl = generate(&canvas);
+        assert_eq!(zpl.matches("^FDWide^FS").count(), 2);
+        assert!(zpl.contains("^AGN"));
     }
 
     #[test]
@@ -94,10 +149,11 @@ mod tests {
             id: 1,
             pos: egui::pos2(0.0, 0.0),
             content: "Hi".to_string(),
-            font_size: 12, // 12pt @ 600dpi = 100 dots
+            font_size: 12,
             bold: false,
+            font: ZplFont::A,
         }));
         let zpl = generate(&canvas);
-        assert!(zpl.contains("^A0N,100,55")); // w = 100*55/100 = 55
+        assert!(zpl.contains("^A0N,100,55"));
     }
 }

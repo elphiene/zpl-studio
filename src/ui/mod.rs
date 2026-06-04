@@ -1,3 +1,4 @@
+pub mod clipart_data;
 pub mod design_mode;
 pub mod edit_mode;
 pub mod load_mode;
