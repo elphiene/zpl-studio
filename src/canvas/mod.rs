@@ -76,9 +76,23 @@ pub struct ClipartElement {
 }
 
 #[derive(Clone, Debug)]
+pub struct ImageElement {
+    pub id: u64,
+    pub pos: egui::Pos2,
+    pub width_in: f32,
+    pub height_in: f32,
+    pub png_bytes: Vec<u8>,
+    pub filename: String,
+    pub orig_w_px: u32,
+    pub orig_h_px: u32,
+    pub lock_aspect: bool,
+}
+
+#[derive(Clone, Debug)]
 pub enum CanvasElement {
     Text(TextElement),
     Clipart(ClipartElement),
+    Image(ImageElement),
 }
 
 impl CanvasElement {
@@ -86,6 +100,7 @@ impl CanvasElement {
         match self {
             CanvasElement::Text(t) => t.id,
             CanvasElement::Clipart(c) => c.id,
+            CanvasElement::Image(i) => i.id,
         }
     }
 
@@ -93,6 +108,7 @@ impl CanvasElement {
         match self {
             CanvasElement::Text(t) => t.pos,
             CanvasElement::Clipart(c) => c.pos,
+            CanvasElement::Image(i) => i.pos,
         }
     }
 
@@ -100,6 +116,7 @@ impl CanvasElement {
         match self {
             CanvasElement::Text(t) => t.pos = pos,
             CanvasElement::Clipart(c) => c.pos = pos,
+            CanvasElement::Image(i) => i.pos = pos,
         }
     }
 }
@@ -193,6 +210,7 @@ impl CanvasState {
                 match &mut clone {
                     CanvasElement::Text(t) => t.id = new_id,
                     CanvasElement::Clipart(c) => c.id = new_id,
+                    CanvasElement::Image(i) => i.id = new_id,
                 }
                 self.elements.push(clone);
                 self.selected_id = Some(new_id);
@@ -229,6 +247,44 @@ impl CanvasState {
         self.elements.iter_mut().find_map(|e| {
             if let CanvasElement::Clipart(c) = e {
                 if c.id == id { return Some(c); }
+            }
+            None
+        })
+    }
+
+    pub fn add_image(
+        &mut self,
+        png_bytes: Vec<u8>,
+        filename: String,
+        orig_w_px: u32,
+        orig_h_px: u32,
+        pos: egui::Pos2,
+    ) {
+        let id = self.next_id;
+        self.next_id += 1;
+        // Default to 2" wide, preserve aspect ratio
+        let width_in = 2.0_f32.min(self.label_width_in);
+        let aspect = orig_h_px as f32 / orig_w_px.max(1) as f32;
+        let height_in = (width_in * aspect).min(self.label_height_in);
+        self.elements.push(CanvasElement::Image(ImageElement {
+            id,
+            pos,
+            width_in,
+            height_in,
+            png_bytes,
+            filename,
+            orig_w_px,
+            orig_h_px,
+            lock_aspect: true,
+        }));
+        self.selected_id = Some(id);
+    }
+
+    pub fn selected_image_mut(&mut self) -> Option<&mut ImageElement> {
+        let id = self.selected_id?;
+        self.elements.iter_mut().find_map(|e| {
+            if let CanvasElement::Image(i) = e {
+                if i.id == id { return Some(i); }
             }
             None
         })

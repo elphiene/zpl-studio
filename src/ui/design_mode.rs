@@ -178,6 +178,33 @@ impl DesignModePanel {
 
             ui.separator();
 
+            // Import Image button
+            if ui.button("🖼  Import Image…").on_hover_text("Import PNG/JPG onto canvas").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Image", &["png", "jpg", "jpeg", "bmp", "tiff", "webp"])
+                    .pick_file()
+                {
+                    if let Ok(bytes) = std::fs::read(&path) {
+                        if let Ok(img) = image::load_from_memory(&bytes) {
+                            let orig_w = img.width();
+                            let orig_h = img.height();
+                            let filename = path
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "image".to_string());
+                            let center = egui::pos2(
+                                self.canvas.label_width_in / 2.0,
+                                self.canvas.label_height_in / 2.0,
+                            );
+                            self.canvas.add_image(bytes, filename, orig_w, orig_h, center);
+                            self.active_tool = ActiveTool::Select;
+                        }
+                    }
+                }
+            }
+
+            ui.separator();
+
             // Align buttons — only interactive when something is selected
             let has_sel = self.canvas.selected_id.is_some();
             ui.add_enabled_ui(has_sel, |ui| {
@@ -283,14 +310,14 @@ impl DesignModePanel {
             return;
         }
 
-        let is_text = self.canvas.elements.iter().any(|e| {
-            e.id() == selected_id.unwrap() && matches!(e, CanvasElement::Text(_))
+        let selected = selected_id.and_then(|id| {
+            self.canvas.elements.iter().find(|e| e.id() == id)
         });
-
-        if is_text {
-            self.draw_text_properties(ui);
-        } else {
-            self.draw_clipart_properties(ui);
+        match selected {
+            Some(CanvasElement::Text(_))    => self.draw_text_properties(ui),
+            Some(CanvasElement::Clipart(_)) => self.draw_clipart_properties(ui),
+            Some(CanvasElement::Image(_))   => self.draw_image_properties(ui),
+            None => {}
         }
     }
 
@@ -459,6 +486,132 @@ impl DesignModePanel {
                         .suffix("\""),
                 );
             });
+        }
+    }
+
+    fn draw_image_properties(&mut self, ui: &mut egui::Ui) {
+        section_header(ui, "IMAGE");
+
+        if let Some(i) = self.canvas.selected_image_mut() {
+            ui.label(
+                egui::RichText::new(&i.filename.clone())
+                    .strong()
+                    .color(ACCENT),
+            );
+            ui.label(
+                egui::RichText::new(format!("{}×{} px  (original)", i.orig_w_px, i.orig_h_px))
+                    .size(10.0)
+                    .color(egui::Color32::from_gray(120)),
+            );
+            ui.add_space(8.0);
+
+            section_header(ui, "SIZE");
+            let aspect = i.orig_h_px as f32 / i.orig_w_px.max(1) as f32;
+            let mut w = i.width_in;
+            let mut h = i.height_in;
+            let mut w_changed = false;
+            let mut h_changed = false;
+
+            ui.horizontal(|ui| {
+                ui.label("W");
+                w_changed = ui
+                    .add(
+                        egui::DragValue::new(&mut w)
+                            .speed(0.01)
+                            .clamp_range(0.05..=12.0)
+                            .suffix("\""),
+                    )
+                    .changed();
+            });
+            ui.horizontal(|ui| {
+                ui.label("H");
+                h_changed = ui
+                    .add(
+                        egui::DragValue::new(&mut h)
+                            .speed(0.01)
+                            .clamp_range(0.05..=12.0)
+                            .suffix("\""),
+                    )
+                    .changed();
+            });
+            if w_changed && i.lock_aspect { h = w * aspect; }
+            if h_changed && i.lock_aspect { w = h / aspect.max(0.001); }
+            i.width_in = w;
+            i.height_in = h;
+
+            ui.horizontal(|ui| {
+                let fill = if i.lock_aspect { ACCENT.linear_multiply(0.4) } else { egui::Color32::from_gray(38) };
+                if ui
+                    .add(egui::Button::new(if i.lock_aspect { "🔒" } else { "🔓" }).fill(fill))
+                    .on_hover_text("Lock aspect ratio")
+                    .clicked()
+                {
+                    i.lock_aspect = !i.lock_aspect;
+                }
+                ui.label("Lock aspect");
+            });
+            ui.add_space(10.0);
+
+            section_header(ui, "POSITION");
+            ui.horizontal(|ui| {
+                ui.label("X");
+                ui.add(
+                    egui::DragValue::new(&mut i.pos.x)
+                        .speed(0.01)
+                        .clamp_range(0.0..=20.0)
+                        .suffix("\""),
+                );
+                ui.label("Y");
+                ui.add(
+                    egui::DragValue::new(&mut i.pos.y)
+                        .speed(0.01)
+                        .clamp_range(0.0..=20.0)
+                        .suffix("\""),
+                );
+            });
+            ui.add_space(10.0);
+
+            // Replace button
+            ui.separator();
+            if ui.button("🖼  Replace image…").clicked() {
+                // Collect what we need before the mutable borrow ends
+                let id = i.id;
+                let pos = i.pos;
+                drop(i); // release mutable borrow
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Image", &["png", "jpg", "jpeg", "bmp", "tiff", "webp"])
+                    .pick_file()
+                {
+                    if let Ok(bytes) = std::fs::read(&path) {
+                        if let Ok(img) = image::load_from_memory(&bytes) {
+                            let orig_w = img.width();
+                            let orig_h = img.height();
+                            let filename = path
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "image".to_string());
+                            // Replace element in-place
+                            for elem in &mut self.canvas.elements {
+                                if elem.id() == id {
+                                    if let CanvasElement::Image(im) = elem {
+                                        let aspect = orig_h as f32 / orig_w.max(1) as f32;
+                                        im.png_bytes = bytes;
+                                        im.filename = filename;
+                                        im.orig_w_px = orig_w;
+                                        im.orig_h_px = orig_h;
+                                        im.height_in = im.width_in * aspect;
+                                        // Invalidate texture cache for this element
+                                        self.texture_cache.remove(&format!("img_{}", id));
+                                    }
+                                    break;
+                                }
+                            }
+                            // Re-centre at same position
+                            let _ = pos;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -760,6 +913,33 @@ impl DesignModePanel {
                         draw_handles(painter, sel);
                     }
                 }
+                CanvasElement::Image(i) => {
+                    let sp = origin + egui::vec2(i.pos.x * PX_PER_INCH * zoom, i.pos.y * PX_PER_INCH * zoom);
+                    let pw = i.width_in * PX_PER_INCH * zoom;
+                    let ph = i.height_in * PX_PER_INCH * zoom;
+                    let dest = egui::Rect::from_min_size(sp, egui::vec2(pw, ph));
+
+                    let cache_key = format!("img_{}", i.id);
+                    if !self.texture_cache.contains_key(&cache_key) {
+                        if let Ok(img) = image::load_from_memory(&i.png_bytes) {
+                            let rgba = img.to_rgba8();
+                            let size = [img.width() as usize, img.height() as usize];
+                            let ci = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_flat_samples().samples);
+                            let handle = ctx.load_texture(&cache_key, ci, egui::TextureOptions::LINEAR);
+                            self.texture_cache.insert(cache_key.clone(), handle);
+                        }
+                    }
+                    if let Some(tex) = self.texture_cache.get(&cache_key) {
+                        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                        painter.image(tex.id(), dest, uv, egui::Color32::WHITE);
+                    }
+
+                    if selected_id == Some(i.id) {
+                        let sel = dest.expand(4.0);
+                        painter.rect_stroke(sel, 2.0, egui::Stroke::new(1.5, ACCENT));
+                        draw_handles(painter, sel);
+                    }
+                }
             }
         }
     }
@@ -843,6 +1023,14 @@ impl DesignModePanel {
                     let dest = egui::Rect::from_min_size(ep, egui::vec2(c.width_in * PX_PER_INCH * self.zoom, c.height_in * PX_PER_INCH * self.zoom));
                     if dest.expand(4.0).contains(screen_pos) {
                         self.canvas.selected_id = Some(c.id);
+                        return;
+                    }
+                }
+                CanvasElement::Image(i) => {
+                    let ep = canvas_origin + egui::vec2(i.pos.x * PX_PER_INCH * self.zoom, i.pos.y * PX_PER_INCH * self.zoom);
+                    let dest = egui::Rect::from_min_size(ep, egui::vec2(i.width_in * PX_PER_INCH * self.zoom, i.height_in * PX_PER_INCH * self.zoom));
+                    if dest.expand(4.0).contains(screen_pos) {
+                        self.canvas.selected_id = Some(i.id);
                         return;
                     }
                 }

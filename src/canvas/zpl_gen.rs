@@ -41,6 +41,15 @@ pub fn generate(canvas: &CanvasState) -> String {
                     out.push_str(&format!("^FO{},{}\n{}\n", x, y, gf));
                 }
             }
+            CanvasElement::Image(i) => {
+                let x = (i.pos.x * canvas.dpi as f32) as u32;
+                let y = (i.pos.y * canvas.dpi as f32) as u32;
+                let w_dots = ((i.width_in * canvas.dpi as f32) as u32).max(1);
+                let h_dots = ((i.height_in * canvas.dpi as f32) as u32).max(1);
+                if let Some(gf) = png_to_gf(&i.png_bytes, w_dots, h_dots) {
+                    out.push_str(&format!("^FO{},{}\n{}\n", x, y, gf));
+                }
+            }
         }
     }
 
