@@ -318,3 +318,48 @@ impl CanvasState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_canvas(w: f32, h: f32) -> CanvasState {
+        CanvasState::new(w, h, 203)
+    }
+
+    #[test]
+    fn image_sizing_landscape_fits_width() {
+        // 400x150 into 4"x6" label → should fit full width (4"), height = 4 * 150/400 = 1.5"
+        let mut cs = make_canvas(4.0, 6.0);
+        cs.add_image(vec![0u8], "test.png".into(), 400, 150, egui::pos2(0.0, 0.0));
+        let img = cs.selected_image_mut().unwrap();
+        assert!((img.width_in - 4.0).abs() < 0.01, "width should be 4\" got {}", img.width_in);
+        assert!((img.height_in - 1.5).abs() < 0.01, "height should be 1.5\" got {}", img.height_in);
+        // centred: pos_y = (6 - 1.5) / 2 = 2.25
+        assert!((img.pos.y - 2.25).abs() < 0.01, "pos.y should be 2.25 got {}", img.pos.y);
+    }
+
+    #[test]
+    fn image_sizing_portrait_fits_height() {
+        // 100x300 into 4"x6" → height-limited: 6" tall, width = 6 * 100/300 = 2"
+        let mut cs = make_canvas(4.0, 6.0);
+        cs.add_image(vec![0u8], "tall.png".into(), 100, 300, egui::pos2(0.0, 0.0));
+        let img = cs.selected_image_mut().unwrap();
+        assert!((img.height_in - 6.0).abs() < 0.01, "height should be 6\" got {}", img.height_in);
+        assert!((img.width_in - 2.0).abs() < 0.01, "width should be 2\" got {}", img.width_in);
+        // centred: pos_x = (4 - 2) / 2 = 1.0
+        assert!((img.pos.x - 1.0).abs() < 0.01, "pos.x should be 1.0 got {}", img.pos.x);
+    }
+
+    #[test]
+    fn image_sizing_no_squish() {
+        // aspect ratio must be preserved regardless of input
+        let mut cs = make_canvas(4.0, 2.0);
+        cs.add_image(vec![0u8], "img.png".into(), 600, 200, egui::pos2(0.0, 0.0));
+        let img = cs.selected_image_mut().unwrap();
+        let stored_aspect = img.height_in / img.width_in;
+        let orig_aspect = 200.0 / 600.0;
+        assert!((stored_aspect - orig_aspect).abs() < 0.001,
+            "aspect ratio changed: stored {:.4} vs original {:.4}", stored_aspect, orig_aspect);
+    }
+}
