@@ -247,7 +247,7 @@ impl DesignModePanel {
 
         let selected_id = self.canvas.selected_id;
 
-        if matches!(self.active_tool, ActiveTool::Clipart) && selected_id.is_none() {
+        if matches!(self.active_tool, ActiveTool::Clipart) {
             self.draw_clipart_picker(ui);
             return;
         }
@@ -691,12 +691,13 @@ impl DesignModePanel {
 
     fn draw_grid(&self, painter: &egui::Painter, canvas_rect: egui::Rect) {
         if !self.show_grid { return; }
-        let grid_col = egui::Color32::from_rgba_unmultiplied(180, 180, 220, 22);
+        let grid_col = egui::Color32::from_rgb(200, 200, 230);
         let step = 0.25 * PX_PER_INCH * self.zoom;
+        let stroke = egui::Stroke::new(1.0, grid_col);
         let mut x = canvas_rect.min.x + step;
-        while x < canvas_rect.max.x { painter.line_segment([egui::pos2(x, canvas_rect.min.y), egui::pos2(x, canvas_rect.max.y)], egui::Stroke::new(0.5, grid_col)); x += step; }
+        while x < canvas_rect.max.x { painter.line_segment([egui::pos2(x, canvas_rect.min.y), egui::pos2(x, canvas_rect.max.y)], stroke); x += step; }
         let mut y = canvas_rect.min.y + step;
-        while y < canvas_rect.max.y { painter.line_segment([egui::pos2(canvas_rect.min.x, y), egui::pos2(canvas_rect.max.x, y)], egui::Stroke::new(0.5, grid_col)); y += step; }
+        while y < canvas_rect.max.y { painter.line_segment([egui::pos2(canvas_rect.min.x, y), egui::pos2(canvas_rect.max.x, y)], stroke); y += step; }
     }
 
     fn draw_elements(&mut self, ctx: &egui::Context, painter: &egui::Painter, canvas_rect: egui::Rect) {
