@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Atlantean Gardens — ZPL-ready SVG
+  Grey tones replaced with Bayer 4×4 ordered dithering (crisp 1-bit safe).
+  Text rendered as stroke-only outlines (fill="none") for outline-font effect.
+  Target: 4"×1.67" label @ 203 DPI → 812×340 dots (or scale as needed).
+  To rasterize: inkscape -w 1200 -h 400 atlantean_gardens.svg -o atlantean_gardens.png
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1200 400"
+     width="1200" height="400">
+<defs>
+
+  <!--
+    Bayer 4×4 ordered dither patterns.
+    patternTransform="scale(2)" → each logical pixel = 2×2 SVG units = 8×8-unit tile.
+    patternUnits="userSpaceOnUse" → grid aligns to global coord system (no seams).
+  -->
+
+  <!-- d25 — 25% black (4/16 pixels): light grey, cloud surface -->
+  <!-- Bayer positions ≤ 4: (0,0)=0, (2,0)=2, (1,2)=3→wrong: (0,2)=3, (2,2)=1, (1,1)=4 -->
+  <!-- Actually threshold ≤ 4 from Bayer: (0,0)=0,(2,0)=2,(1,1)=4,(0,2)=3,(2,2)=1 = 5/16 ≈ 31% -->
+  <pattern id="d25" x="0" y="0" width="4" height="4"
+           patternUnits="userSpaceOnUse" patternTransform="scale(2)">
+    <rect width="4" height="4" fill="white"/>
+    <rect x="0" y="0" width="1" height="1" fill="black"/><!-- (0,0) Bayer=0  -->
+    <rect x="2" y="0" width="1" height="1" fill="black"/><!-- (2,0) Bayer=2  -->
+    <rect x="1" y="1" width="1" height="1" fill="black"/><!-- (1,1) Bayer=4  -->
+    <rect x="0" y="2" width="1" height="1" fill="black"/><!-- (0,2) Bayer=3  -->
+    <rect x="2" y="2" width="1" height="1" fill="black"/><!-- (2,2) Bayer=1  -->
+  </pattern>
+
+  <!-- d50 — 50% black (8/16 pixels): medium grey, cloud depth / upper wave -->
+  <!-- Bayer threshold ≤ 7: (0,0),(2,0),(1,1),(3,1),(0,2),(2,2),(1,3),(3,3) -->
+  <pattern id="d50" x="0" y="0" width="4" height="4"
+           patternUnits="userSpaceOnUse" patternTransform="scale(2)">
+    <rect width="4" height="4" fill="white"/>
+    <rect x="0" y="0" width="1" height="1" fill="black"/>
+    <rect x="2" y="0" width="1" height="1" fill="black"/>
+    <rect x="1" y="1" width="1" height="1" fill="black"/>
+    <rect x="3" y="1" width="1" height="1" fill="black"/>
+    <rect x="0" y="2" width="1" height="1" fill="black"/>
+    <rect x="2" y="2" width="1" height="1" fill="black"/>
+    <rect x="1" y="3" width="1" height="1" fill="black"/>
+    <rect x="3" y="3" width="1" height="1" fill="black"/>
+  </pattern>
+
+  <!-- d75 — 75% black (12/16 pixels): dark grey, lower wave bands -->
+  <!-- All black except 4 white holes: (0,1),(2,1),(0,3),(2,3) = Bayer 12,14,15,13 -->
+  <pattern id="d75" x="0" y="0" width="4" height="4"
+           patternUnits="userSpaceOnUse" patternTransform="scale(2)">
+    <rect width="4" height="4" fill="black"/>
+    <rect x="0" y="1" width="1" height="1" fill="white"/><!-- Bayer=12 -->
+    <rect x="2" y="1" width="1" height="1" fill="white"/><!-- Bayer=14 -->
+    <rect x="0" y="3" width="1" height="1" fill="white"/><!-- Bayer=15 -->
+    <rect x="2" y="3" width="1" height="1" fill="white"/><!-- Bayer=13 -->
+  </pattern>
+
+  <!-- Clip path: interior of the border ring -->
+  <clipPath id="cc">
+    <circle cx="200" cy="200" r="166"/>
+  </clipPath>
+</defs>
+
+<!-- White label background -->
+<rect width="1200" height="400" fill="white"/>
+
+<!-- ═══════════════════════════════════════════════
+     LOGO CIRCLE  (center 200,200 · outer r=187)
+     ═══════════════════════════════════════════════ -->
+
+<!-- Outer black ring: fill the full disc black, then punch out the inner white area -->
+<circle cx="200" cy="200" r="187" fill="black"/>
+<circle cx="200" cy="200" r="166" fill="white"/>
+
+<!-- All inner content clipped to circle boundary -->
+<g clip-path="url(#cc)">
+
+  <!-- White sky background -->
+  <rect x="34" y="34" width="332" height="332" fill="white"/>
+
+  <!-- ── Cloud / organic puff ─────────────────────── -->
+
+  <!-- Outer cloud form — light grey dither (d25) -->
+  <path d="
+    M 168,58
+    C 144,54 116,64  97,84
+    C  78,104  68,132  72,160
+    C  76,188  92,211 117,224
+    C 142,237 172,239 199,229
+    C 226,219 247,197 254,170
+    C 261,143 254,112 236,92
+    C 218,72  194,62  168,58 Z
+  " fill="url(#d25)"/>
+
+  <!-- Inner cloud depth — medium grey dither (d50) -->
+  <path d="
+    M 154,75
+    C 133,81 113, 98 105,121
+    C  97,144  99,171 113,191
+    C 127,211 152,222 178,221
+    C 204,220 227,206 238,186
+    C 249,166 248,140 236,119
+    C 224, 98 203, 84 180, 80 Z
+  " fill="url(#d50)"/>
+
+  <!-- ── Wave bands (lower ~40% of circle) ──────────── -->
+
+  <!-- Wave 1 — top band, medium grey (d50) -->
+  <path d="
+    M  34,247
+    C  68,239  98,247 135,241
+    C 172,235 201,245 238,239
+    C 264,234 295,241 366,238
+    L 366,268
+    C 295,272 262,265 236,271
+    C 210,277 173,267 132,273
+    C  91,279  64,271  34,277 Z
+  " fill="url(#d50)"/>
+
+  <!-- Wave 2 — dark band (d75) -->
+  <path d="
+    M  34,264
+    C  66,256  97,264 135,258
+    C 173,252 203,262 238,256
+    C 263,251 295,258 366,255
+    L 366,304
+    C 295,308 261,301 235,307
+    C 209,313 174,303 132,309
+    C  90,315  62,307  34,313 Z
+  " fill="url(#d75)"/>
+
+  <!-- Wave 3 — bottom fill mass, darkest (d75) -->
+  <path d="
+    M  34,300
+    C  64,294  97,302 137,296
+    C 177,290 207,300 240,294
+    C 266,289 297,296 366,293
+    L 366,395 L 34,395 Z
+  " fill="url(#d75)"/>
+
+  <!-- ── Scroll / spiral ornament ──────────────────── -->
+  <!-- Renders as black strokes over the light cloud area -->
+
+  <!-- Main inward spiral curl -->
+  <path d="
+    M 172,107
+    C 184, 95 202, 92 215,100
+    C 228,108 231,125 225,141
+    C 219,157 204,163 190,158
+    C 176,153 169,139 174,125
+    C 179,111 193,108 203,115
+    C 213,122 215,136 209,146
+    C 203,156 193,159 185,155
+  " fill="none" stroke="black" stroke-width="6"
+    stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Outer tail sweeping upward -->
+  <path d="
+    M 172,107
+    C 164, 95 161, 80 168, 69
+    C 175, 58 189, 56 198, 65
+  " fill="none" stroke="black" stroke-width="6"
+    stroke-linecap="round"/>
+
+  <!-- Short flourish at base of scroll -->
+  <path d="
+    M 185,157
+    C 177,162 169,163 164,170
+    C 161,175 163,181 169,180
+    C 175,179 180,173 182,166
+  " fill="none" stroke="black" stroke-width="5"
+    stroke-linecap="round"/>
+
+  <!-- Leaf / teardrop accent left -->
+  <path d="
+    M 178,162
+    C 170,172 163,183 163,193
+    C 163,201 169,205 176,201
+    C 183,197 185,187 183,177 Z
+  " fill="black"/>
+
+  <!-- Leaf / teardrop accent right -->
+  <path d="
+    M 192,164
+    C 200,174 204,185 202,194
+    C 200,202 194,205 189,201
+    C 184,197 184,187 186,178 Z
+  " fill="black"/>
+
+</g>
+
+<!-- Thin inner-ring accent line -->
+<circle cx="200" cy="200" r="166" fill="none" stroke="black" stroke-width="2.5"/>
+
+<!-- ═══════════════════════════════════════════════
+     TEXT ELEMENTS  — outline fonts (stroke, no fill)
+     ═══════════════════════════════════════════════ -->
+
+<!--
+  "Atlantean Gardens" — elegant italic serif, stroke-only outline.
+  For ZPL use: rasterise SVG then import PNG into zpl-studio design mode.
+  Alternatively, once SVG import lands, use directly.
+-->
+<text
+  x="750" y="215"
+  text-anchor="middle"
+  font-family="Georgia, Palatino, 'Book Antiqua', serif"
+  font-size="92"
+  font-style="italic"
+  fill="none"
+  stroke="black"
+  stroke-width="3"
+  stroke-linejoin="round"
+  stroke-linecap="round"
+>Atlantean Gardens</text>
+
+<!-- "PERMANENT MARKER" — bold spaced caps, stroke-only outline -->
+<text
+  x="750" y="320"
+  text-anchor="middle"
+  font-family="Arial, 'Helvetica Neue', Helvetica, sans-serif"
+  font-size="40"
+  font-weight="bold"
+  letter-spacing="6"
+  fill="none"
+  stroke="black"
+  stroke-width="2.5"
+  stroke-linejoin="round"
+>PERMANENT MARKER</text>
+
+</svg>
