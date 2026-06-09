@@ -31,6 +31,10 @@ pub struct DesignModePanel {
     selected_clipart_id: Option<&'static str>,
     clipart_category: &'static str,
     texture_cache: HashMap<String, egui::TextureHandle>,
+    // Handle resize drag state
+    active_handle: Option<u8>,       // 0=TL 1=TC 2=TR 3=MR 4=BR 5=BC 6=BL 7=ML
+    drag_ptr_start: Option<egui::Pos2>,
+    drag_elem_start: Option<(egui::Pos2, f32, f32)>, // (pos_in, w_in, h_in)
 }
 
 impl Default for DesignModePanel {
@@ -47,6 +51,9 @@ impl Default for DesignModePanel {
             selected_clipart_id: None,
             clipart_category: CAT_ALL,
             texture_cache: HashMap::new(),
+            active_handle: None,
+            drag_ptr_start: None,
+            drag_elem_start: None,
         }
     }
 }
@@ -712,25 +719,30 @@ impl DesignModePanel {
             if i.modifiers.ctrl { i.raw_scroll_delta.y } else { 0.0 }
         });
 
-        if key_v { self.active_tool = ActiveTool::Select; }
-        if key_t {
-            self.active_tool = ActiveTool::Text;
-            self.status_message = "Click on the canvas to place text".to_string();
-        }
-        if key_c {
-            self.active_tool = ActiveTool::Clipart;
-            self.status_message = "Choose clipart in the panel, then click canvas".to_string();
+        // Only fire canvas shortcuts when no text input widget has keyboard focus
+        let text_focused = ui.ctx().memory(|m| m.focused().is_some());
+
+        if !text_focused {
+            if key_v { self.active_tool = ActiveTool::Select; }
+            if key_t {
+                self.active_tool = ActiveTool::Text;
+                self.status_message = "Click on the canvas to place text".to_string();
+            }
+            if key_c {
+                self.active_tool = ActiveTool::Clipart;
+                self.status_message = "Choose clipart in the panel, then click canvas".to_string();
+            }
         }
         if key_esc { self.canvas.selected_id = None; }
-        if key_del && self.canvas.selected_id.is_some() {
+        if !text_focused && key_del && self.canvas.selected_id.is_some() {
             self.canvas.delete_selected();
             self.status_message = "Element deleted".to_string();
         }
-        if key_dup {
+        if !text_focused && key_dup {
             self.canvas.duplicate_selected();
             self.status_message = "Element duplicated".to_string();
         }
-        if self.canvas.selected_id.is_some() {
+        if !text_focused && self.canvas.selected_id.is_some() {
             if arrow.0 { self.canvas.nudge_selected(-NUDGE_IN, 0.0); }
             if arrow.1 { self.canvas.nudge_selected(NUDGE_IN, 0.0); }
             if arrow.2 { self.canvas.nudge_selected(0.0, -NUDGE_IN); }
@@ -947,29 +959,72 @@ impl DesignModePanel {
     fn handle_canvas_interaction(&mut self, resp: &egui::Response, canvas_rect: egui::Rect) {
         let origin = canvas_rect.min;
 
-        if resp.dragged() && self.canvas.selected_id.is_some() {
-            let delta = resp.drag_delta();
-            let id = self.canvas.selected_id.unwrap();
-            let lw = self.canvas.label_width_in;
-            let lh = self.canvas.label_height_in;
-            let zoom = self.zoom;
-            for elem in &mut self.canvas.elements {
-                if elem.id() == id {
-                    let pos = elem.pos();
-                    let nx = (pos.x + delta.x / (PX_PER_INCH * zoom)).max(0.0).min(lw);
-                    let ny = (pos.y + delta.y / (PX_PER_INCH * zoom)).max(0.0).min(lh);
-                    elem.set_pos(egui::pos2(nx, ny));
-                    break;
+        // ── Drag started: decide if we're moving or resizing ─────────
+        if resp.drag_started() {
+            if let Some(ptr) = resp.interact_pointer_pos() {
+                if canvas_rect.contains(ptr) && matches!(self.active_tool, ActiveTool::Select) {
+                    // Check handles of the currently selected element first
+                    let handle = self.canvas.selected_id.and_then(|id| {
+                        Self::elem_bounds(id, &self.canvas.elements, origin, self.zoom)
+                            .and_then(|bounds| find_handle_at(ptr, bounds.expand(4.0)))
+                    });
+                    if let Some(h) = handle {
+                        // Store start state for resize
+                        self.active_handle = Some(h);
+                        self.drag_ptr_start = Some(ptr);
+                        self.drag_elem_start = self.canvas.selected_id.and_then(|id| {
+                            self.canvas.elements.iter().find(|e| e.id() == id).map(|e| {
+                                let (w, h2) = elem_size(e);
+                                (e.pos(), w, h2)
+                            })
+                        });
+                    } else {
+                        self.active_handle = None;
+                        self.hit_test(ptr, origin);
+                    }
                 }
             }
         }
 
-        if resp.drag_started() {
-            if let Some(ptr) = resp.interact_pointer_pos() {
-                if canvas_rect.contains(ptr) && matches!(self.active_tool, ActiveTool::Select) {
-                    self.hit_test(ptr, origin);
+        // ── Dragging ─────────────────────────────────────────────────
+        if resp.dragged() && self.canvas.selected_id.is_some() {
+            let id = self.canvas.selected_id.unwrap();
+            let zoom = self.zoom;
+            let lw = self.canvas.label_width_in;
+            let lh = self.canvas.label_height_in;
+
+            if let (Some(h_idx), Some(ptr_start), Some((start_pos, start_w, start_h))) =
+                (self.active_handle, self.drag_ptr_start, self.drag_elem_start)
+            {
+                // Resize the element
+                if let Some(ptr) = resp.interact_pointer_pos() {
+                    let dx = (ptr.x - ptr_start.x) / (PX_PER_INCH * zoom);
+                    let dy = (ptr.y - ptr_start.y) / (PX_PER_INCH * zoom);
+                    apply_handle_resize(
+                        h_idx, dx, dy,
+                        start_pos, start_w, start_h,
+                        id, &mut self.canvas.elements, lw, lh,
+                    );
+                }
+            } else {
+                // Move the element
+                let delta = resp.drag_delta();
+                for elem in &mut self.canvas.elements {
+                    if elem.id() == id {
+                        let pos = elem.pos();
+                        let nx = (pos.x + delta.x / (PX_PER_INCH * zoom)).max(0.0).min(lw);
+                        let ny = (pos.y + delta.y / (PX_PER_INCH * zoom)).max(0.0).min(lh);
+                        elem.set_pos(egui::pos2(nx, ny));
+                        break;
+                    }
                 }
             }
+        }
+
+        if resp.drag_released() {
+            self.active_handle = None;
+            self.drag_ptr_start = None;
+            self.drag_elem_start = None;
         }
 
         if resp.clicked() {
@@ -1002,6 +1057,21 @@ impl DesignModePanel {
                 }
             }
         }
+    }
+
+    /// Screen-space bounding rect of an element (for handle hit testing). None for Text.
+    fn elem_bounds(id: u64, elements: &[CanvasElement], origin: egui::Pos2, zoom: f32) -> Option<egui::Rect> {
+        elements.iter().find(|e| e.id() == id).and_then(|e| match e {
+            CanvasElement::Clipart(c) => Some(egui::Rect::from_min_size(
+                origin + egui::vec2(c.pos.x * PX_PER_INCH * zoom, c.pos.y * PX_PER_INCH * zoom),
+                egui::vec2(c.width_in * PX_PER_INCH * zoom, c.height_in * PX_PER_INCH * zoom),
+            )),
+            CanvasElement::Image(i) => Some(egui::Rect::from_min_size(
+                origin + egui::vec2(i.pos.x * PX_PER_INCH * zoom, i.pos.y * PX_PER_INCH * zoom),
+                egui::vec2(i.width_in * PX_PER_INCH * zoom, i.height_in * PX_PER_INCH * zoom),
+            )),
+            CanvasElement::Text(_) => None,
+        })
     }
 
     fn hit_test(&mut self, screen_pos: egui::Pos2, canvas_origin: egui::Pos2) {
@@ -1037,6 +1107,95 @@ impl DesignModePanel {
             }
         }
         self.canvas.selected_id = None;
+    }
+}
+
+// ── Resize helpers ────────────────────────────────────────────────────────
+
+fn elem_size(e: &CanvasElement) -> (f32, f32) {
+    match e {
+        CanvasElement::Clipart(c) => (c.width_in, c.height_in),
+        CanvasElement::Image(i)   => (i.width_in, i.height_in),
+        CanvasElement::Text(_)    => (0.0, 0.0), // text doesn't resize via handles
+    }
+}
+
+/// Returns the screen-space bounding rect for the selected element (for handle hit testing).
+/// Returns None for text elements (they don't support handle resize).
+fn find_handle_at(ptr: egui::Pos2, rect: egui::Rect) -> Option<u8> {
+    let handle_r = 6.0; // hit radius in screen pixels
+    let positions = [
+        rect.left_top(),
+        egui::pos2(rect.center().x, rect.min.y),
+        rect.right_top(),
+        egui::pos2(rect.max.x, rect.center().y),
+        rect.right_bottom(),
+        egui::pos2(rect.center().x, rect.max.y),
+        rect.left_bottom(),
+        egui::pos2(rect.min.x, rect.center().y),
+    ];
+    positions.iter().enumerate().find_map(|(i, &h)| {
+        if (ptr.x - h.x).abs() <= handle_r && (ptr.y - h.y).abs() <= handle_r {
+            Some(i as u8)
+        } else {
+            None
+        }
+    })
+}
+
+fn apply_handle_resize(
+    handle: u8,
+    dx: f32, dy: f32,
+    start_pos: egui::Pos2, start_w: f32, start_h: f32,
+    elem_id: u64,
+    elements: &mut Vec<CanvasElement>,
+    max_w: f32, max_h: f32,
+) {
+    for elem in elements.iter_mut() {
+        if elem.id() != elem_id { continue; }
+        let (lock, aspect) = match elem {
+            CanvasElement::Image(i)   => (i.lock_aspect, i.orig_h_px as f32 / i.orig_w_px.max(1) as f32),
+            CanvasElement::Clipart(c) => (c.lock_aspect, c.height_in / c.width_in.max(0.001)),
+            CanvasElement::Text(_)    => return,
+        };
+
+        // Compute new pos and size based on which handle is dragged.
+        // Handles: 0=TL 1=TC 2=TR 3=MR 4=BR 5=BC 6=BL 7=ML
+        let (mut new_x, mut new_y, mut new_w, mut new_h) = (start_pos.x, start_pos.y, start_w, start_h);
+        match handle {
+            0 => { new_x = start_pos.x + dx; new_w = (start_w - dx).max(0.05); new_y = start_pos.y + dy; new_h = (start_h - dy).max(0.05); }
+            1 => { new_y = start_pos.y + dy; new_h = (start_h - dy).max(0.05); }
+            2 => { new_w = (start_w + dx).max(0.05); new_y = start_pos.y + dy; new_h = (start_h - dy).max(0.05); }
+            3 => { new_w = (start_w + dx).max(0.05); }
+            4 => { new_w = (start_w + dx).max(0.05); new_h = (start_h + dy).max(0.05); }
+            5 => { new_h = (start_h + dy).max(0.05); }
+            6 => { new_x = start_pos.x + dx; new_w = (start_w - dx).max(0.05); new_h = (start_h + dy).max(0.05); }
+            7 => { new_x = start_pos.x + dx; new_w = (start_w - dx).max(0.05); }
+            _ => {}
+        }
+
+        // Constrain
+        new_x = new_x.max(0.0).min(max_w - 0.05);
+        new_y = new_y.max(0.0).min(max_h - 0.05);
+        new_w = new_w.min(max_w);
+        new_h = new_h.min(max_h);
+
+        // Aspect ratio lock — use width as authority for corner/vertical handles,
+        // height for horizontal-only handles
+        if lock {
+            match handle {
+                1 | 5 => { new_w = new_h / aspect.max(0.001); } // top/bottom edge: height drives
+                7 | 3 => { new_h = new_w * aspect; }            // left/right edge: width drives
+                _     => { new_h = new_w * aspect; }            // corners: width drives
+            }
+        }
+
+        match elem {
+            CanvasElement::Image(i)   => { i.pos = egui::pos2(new_x, new_y); i.width_in = new_w; i.height_in = new_h; }
+            CanvasElement::Clipart(c) => { c.pos = egui::pos2(new_x, new_y); c.width_in = new_w; c.height_in = new_h; }
+            _ => {}
+        }
+        break;
     }
 }
 
