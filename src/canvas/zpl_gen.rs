@@ -46,7 +46,10 @@ pub fn generate(canvas: &CanvasState) -> String {
                 let y = (i.pos.y * canvas.dpi as f32) as u32;
                 let w_dots = ((i.width_in * canvas.dpi as f32) as u32).max(1);
                 let h_dots = ((i.height_in * canvas.dpi as f32) as u32).max(1);
-                if let Some(gf) = png_to_gf(&i.png_bytes, w_dots, h_dots) {
+                if let Some(gf) = png_to_gf_with_curve(
+                    &i.png_bytes, w_dots, h_dots,
+                    i.shadows, i.midtones, i.highlights,
+                ) {
                     out.push_str(&format!("^FO{},{}\n{}\n", x, y, gf));
                 }
             }
@@ -58,6 +61,14 @@ pub fn generate(canvas: &CanvasState) -> String {
 }
 
 fn png_to_gf(png_bytes: &[u8], target_w: u32, target_h: u32) -> Option<String> {
+    png_to_gf_with_curve(png_bytes, target_w, target_h, 0, 1.0, 255)
+}
+
+fn png_to_gf_with_curve(
+    png_bytes: &[u8],
+    target_w: u32, target_h: u32,
+    shadows: u8, midtones: f32, highlights: u8,
+) -> Option<String> {
     let img = image::load_from_memory(png_bytes).ok()?;
     let img = img.resize_exact(target_w, target_h, image::imageops::FilterType::Lanczos3);
     let gray = img.to_luma8();
@@ -71,8 +82,12 @@ fn png_to_gf(png_bytes: &[u8], target_w: u32, target_h: u32) -> Option<String> {
             let mut byte_val: u8 = 0;
             for bit in 0..8u32 {
                 let x = byte_idx * 8 + bit;
-                if x < target_w && gray.get_pixel(x, y)[0] < 128 {
-                    byte_val |= 0x80 >> bit;
+                if x < target_w {
+                    let raw = gray.get_pixel(x, y)[0];
+                    let adjusted = apply_levels(raw, shadows, midtones, highlights);
+                    if adjusted < 128 {
+                        byte_val |= 0x80 >> bit;
+                    }
                 }
             }
             hex.push_str(&format!("{:02X}", byte_val));
@@ -83,6 +98,17 @@ fn png_to_gf(png_bytes: &[u8], target_w: u32, target_h: u32) -> Option<String> {
         "^GFA,{},{},{},{}",
         total_bytes, total_bytes, bytes_per_row, hex
     ))
+}
+
+/// Input-levels adjustment: map pixel through (shadows, midtones/gamma, highlights).
+/// Equivalent to Photoshop Levels black/gamma/white point.
+fn apply_levels(pixel: u8, shadows: u8, midtones: f32, highlights: u8) -> u8 {
+    if highlights <= shadows { return if pixel < shadows { 0 } else { 255 }; }
+    let range = (highlights as f32) - (shadows as f32);
+    let normalized = ((pixel as f32 - shadows as f32) / range).clamp(0.0, 1.0);
+    let gamma = midtones.clamp(0.1, 5.0);
+    let adjusted = normalized.powf(1.0 / gamma);
+    (adjusted * 255.0).round() as u8
 }
 
 #[cfg(test)]

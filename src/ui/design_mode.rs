@@ -578,6 +578,39 @@ impl DesignModePanel {
             });
             ui.add_space(10.0);
 
+            // Dot gain / levels curve
+            section_header(ui, "DOT GAIN");
+            ui.label(
+                egui::RichText::new("Compensate for thermal dot spread.\nRaise Midtones to print lighter.")
+                    .size(9.5)
+                    .color(egui::Color32::from_gray(120)),
+            );
+            ui.add_space(4.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Shadows  ");
+                ui.add(egui::Slider::new(&mut i.shadows, 0u8..=120).suffix(""));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Midtones");
+                // Show midtones as a 0.5–2.0 slider, display as percentage
+                let mut mid_pct = (i.midtones * 100.0).round() as i32;
+                if ui.add(egui::Slider::new(&mut mid_pct, 50..=200).suffix("%")).changed() {
+                    i.midtones = mid_pct as f32 / 100.0;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Highlights");
+                ui.add(egui::Slider::new(&mut i.highlights, 135u8..=255).suffix(""));
+            });
+            ui.add_space(4.0);
+            if ui.small_button("Reset curve").clicked() {
+                i.shadows = 0;
+                i.midtones = 1.2;
+                i.highlights = 255;
+            }
+            ui.add_space(8.0);
+
             // Replace button
             ui.separator();
             if ui.button("🖼  Replace image…").clicked() {
@@ -597,7 +630,7 @@ impl DesignModePanel {
                                 .file_name()
                                 .map(|n| n.to_string_lossy().into_owned())
                                 .unwrap_or_else(|| "image".to_string());
-                            // Replace element in-place
+                            // Replace element in-place, keep curve + lock
                             for elem in &mut self.canvas.elements {
                                 if elem.id() == id {
                                     if let CanvasElement::Image(im) = elem {
@@ -606,8 +639,8 @@ impl DesignModePanel {
                                         im.filename = filename;
                                         im.orig_w_px = orig_w;
                                         im.orig_h_px = orig_h;
-                                        im.height_in = im.width_in * aspect;
-                                        // Invalidate texture cache for this element
+                                        // Re-fit height to current width
+                                        im.height_in = if im.lock_aspect { im.width_in * aspect } else { im.height_in };
                                         self.texture_cache.remove(&format!("img_{}", id));
                                     }
                                     break;

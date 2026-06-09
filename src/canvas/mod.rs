@@ -86,6 +86,13 @@ pub struct ImageElement {
     pub orig_w_px: u32,
     pub orig_h_px: u32,
     pub lock_aspect: bool,
+    // Dot gain / levels: applied before 1-bit conversion
+    // shadows = input black point (0-128). Raise to lift dark tones.
+    // midtones = gamma (0.5–2.0). >1.0 = brighter, <1.0 = darker.
+    // highlights = input white point (128-255). Lower to clip highlights.
+    pub shadows: u8,
+    pub midtones: f32,
+    pub highlights: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -262,10 +269,20 @@ impl CanvasState {
     ) {
         let id = self.next_id;
         self.next_id += 1;
-        // Default to 2" wide, preserve aspect ratio
-        let width_in = 2.0_f32.min(self.label_width_in);
+        // Contain-fit: scale to fill label width/height while preserving aspect ratio.
         let aspect = orig_h_px as f32 / orig_w_px.max(1) as f32;
-        let height_in = (width_in * aspect).min(self.label_height_in);
+        let lw = self.label_width_in;
+        let lh = self.label_height_in;
+        let (width_in, height_in) = {
+            let w = lw;
+            let h = w * aspect;
+            if h <= lh { (w, h) } else { (lh / aspect.max(0.001), lh) }
+        };
+        // Centre on the label
+        let pos = egui::pos2(
+            ((lw - width_in) / 2.0).max(0.0),
+            ((lh - height_in) / 2.0).max(0.0),
+        );
         self.elements.push(CanvasElement::Image(ImageElement {
             id,
             pos,
@@ -276,6 +293,9 @@ impl CanvasState {
             orig_w_px,
             orig_h_px,
             lock_aspect: true,
+            shadows: 0,
+            midtones: 1.2,   // slight brightening — compensates for thermal dot gain
+            highlights: 255,
         }));
         self.selected_id = Some(id);
     }
