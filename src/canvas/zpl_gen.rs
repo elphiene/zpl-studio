@@ -48,7 +48,7 @@ pub fn generate(canvas: &CanvasState) -> String {
                 let h_dots = ((i.height_in * canvas.dpi as f32) as u32).max(1);
                 if let Some(gf) = png_to_gf_with_curve(
                     &i.png_bytes, w_dots, h_dots,
-                    i.shadows, i.midtones, i.highlights,
+                    i.shadows, i.midtones, i.highlights, i.use_dither,
                 ) {
                     out.push_str(&format!("^FO{},{}\n{}\n", x, y, gf));
                 }
@@ -61,54 +61,87 @@ pub fn generate(canvas: &CanvasState) -> String {
 }
 
 fn png_to_gf(png_bytes: &[u8], target_w: u32, target_h: u32) -> Option<String> {
-    png_to_gf_with_curve(png_bytes, target_w, target_h, 0, 1.0, 255)
+    png_to_gf_with_curve(png_bytes, target_w, target_h, 0, 1.0, 255, false)
 }
 
 fn png_to_gf_with_curve(
     png_bytes: &[u8],
     target_w: u32, target_h: u32,
     shadows: u8, midtones: f32, highlights: u8,
+    use_dither: bool,
 ) -> Option<String> {
     let img = image::load_from_memory(png_bytes).ok()?;
     let img = img.resize_exact(target_w, target_h, image::imageops::FilterType::Lanczos3);
     let gray = img.to_luma8();
 
+    let w = target_w as usize;
+    let h = target_h as usize;
+
+    // Apply levels curve to a float buffer
+    let mut buf: Vec<f32> = Vec::with_capacity(w * h);
+    for y in 0..h {
+        for x in 0..w {
+            let raw = gray.get_pixel(x as u32, y as u32)[0];
+            buf.push(apply_levels(raw, shadows, midtones, highlights) as f32);
+        }
+    }
+
+    // Quantise to 1-bit — Floyd-Steinberg or hard threshold
+    let dots = if use_dither {
+        floyd_steinberg(&mut buf, w, h)
+    } else {
+        buf.iter().map(|&v| v < 128.0).collect()
+    };
+
+    // Pack bits into ZPL hex
     let bytes_per_row = (target_w + 7) / 8;
     let total_bytes = bytes_per_row * target_h;
-
     let mut hex = String::with_capacity(total_bytes as usize * 2);
-    for y in 0..target_h {
-        for byte_idx in 0..bytes_per_row {
+
+    for y in 0..h {
+        for byte_idx in 0..(bytes_per_row as usize) {
             let mut byte_val: u8 = 0;
-            for bit in 0..8u32 {
+            for bit in 0..8usize {
                 let x = byte_idx * 8 + bit;
-                if x < target_w {
-                    let raw = gray.get_pixel(x, y)[0];
-                    let adjusted = apply_levels(raw, shadows, midtones, highlights);
-                    if adjusted < 128 {
-                        byte_val |= 0x80 >> bit;
-                    }
+                if x < w && dots[y * w + x] {
+                    byte_val |= 0x80 >> bit;
                 }
             }
             hex.push_str(&format!("{:02X}", byte_val));
         }
     }
 
-    Some(format!(
-        "^GFA,{},{},{},{}",
-        total_bytes, total_bytes, bytes_per_row, hex
-    ))
+    Some(format!("^GFA,{},{},{},{}", total_bytes, total_bytes, bytes_per_row, hex))
 }
 
-/// Input-levels adjustment: map pixel through (shadows, midtones/gamma, highlights).
-/// Equivalent to Photoshop Levels black/gamma/white point.
+/// Floyd-Steinberg error diffusion — distributes quantisation error to neighbours.
+/// Returns a flat vec of booleans: true = print dot (dark pixel).
+fn floyd_steinberg(buf: &mut Vec<f32>, w: usize, h: usize) -> Vec<bool> {
+    let mut dots = vec![false; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let old = buf[y * w + x];
+            let new = if old < 128.0 { 0.0 } else { 255.0 };
+            dots[y * w + x] = new < 128.0;
+            let err = old - new;
+            if err == 0.0 { continue; }
+            if x + 1 < w          { buf[y * w + x + 1]       = (buf[y * w + x + 1]       + err * 7.0 / 16.0).clamp(0.0, 255.0); }
+            if y + 1 < h {
+                if x > 0           { buf[(y+1) * w + x - 1]   = (buf[(y+1) * w + x - 1]   + err * 3.0 / 16.0).clamp(0.0, 255.0); }
+                                     buf[(y+1) * w + x]         = (buf[(y+1) * w + x]         + err * 5.0 / 16.0).clamp(0.0, 255.0);
+                if x + 1 < w       { buf[(y+1) * w + x + 1]   = (buf[(y+1) * w + x + 1]   + err * 1.0 / 16.0).clamp(0.0, 255.0); }
+            }
+        }
+    }
+    dots
+}
+
+/// Input-levels: maps pixel through (shadows black point, midtones gamma, highlights white point).
 fn apply_levels(pixel: u8, shadows: u8, midtones: f32, highlights: u8) -> u8 {
     if highlights <= shadows { return if pixel < shadows { 0 } else { 255 }; }
-    let range = (highlights as f32) - (shadows as f32);
-    let normalized = ((pixel as f32 - shadows as f32) / range).clamp(0.0, 1.0);
-    let gamma = midtones.clamp(0.1, 5.0);
-    let adjusted = normalized.powf(1.0 / gamma);
-    (adjusted * 255.0).round() as u8
+    let range = highlights as f32 - shadows as f32;
+    let n = ((pixel as f32 - shadows as f32) / range).clamp(0.0, 1.0);
+    (n.powf(1.0 / midtones.clamp(0.1, 5.0)) * 255.0).round() as u8
 }
 
 #[cfg(test)]

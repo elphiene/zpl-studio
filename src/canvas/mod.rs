@@ -93,6 +93,7 @@ pub struct ImageElement {
     pub shadows: u8,
     pub midtones: f32,
     pub highlights: u8,
+    pub use_dither: bool,  // Floyd-Steinberg error diffusion vs hard threshold
 }
 
 #[derive(Clone, Debug)]
@@ -294,8 +295,9 @@ impl CanvasState {
             orig_h_px,
             lock_aspect: true,
             shadows: 0,
-            midtones: 1.2,   // slight brightening — compensates for thermal dot gain
+            midtones: 1.2,
             highlights: 255,
+            use_dither: true,
         }));
         self.selected_id = Some(id);
     }

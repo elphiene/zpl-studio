@@ -580,8 +580,22 @@ impl DesignModePanel {
 
             // Dot gain / levels curve
             section_header(ui, "DOT GAIN");
+
+            // Dither toggle
+            ui.horizontal(|ui| {
+                let label = if i.use_dither { "Dither (Floyd-Steinberg)" } else { "Threshold (hard cut)" };
+                let fill = if i.use_dither { ACCENT.linear_multiply(0.4) } else { egui::Color32::from_gray(38) };
+                if ui.add(egui::Button::new(egui::RichText::new(label).size(10.5)).fill(fill))
+                    .on_hover_text("Dither: spreads grey tones into dot patterns (best for logos with greys). Threshold: hard black/white cut.")
+                    .clicked()
+                {
+                    i.use_dither = !i.use_dither;
+                }
+            });
+            ui.add_space(6.0);
+
             ui.label(
-                egui::RichText::new("Compensate for thermal dot spread.\nRaise Midtones to print lighter.")
+                egui::RichText::new("Raise Midtones to lighten (offset thermal dot spread).")
                     .size(9.5)
                     .color(egui::Color32::from_gray(120)),
             );
@@ -593,7 +607,6 @@ impl DesignModePanel {
             });
             ui.horizontal(|ui| {
                 ui.label("Midtones");
-                // Show midtones as a 0.5–2.0 slider, display as percentage
                 let mut mid_pct = (i.midtones * 100.0).round() as i32;
                 if ui.add(egui::Slider::new(&mut mid_pct, 50..=200).suffix("%")).changed() {
                     i.midtones = mid_pct as f32 / 100.0;
@@ -604,10 +617,11 @@ impl DesignModePanel {
                 ui.add(egui::Slider::new(&mut i.highlights, 135u8..=255).suffix(""));
             });
             ui.add_space(4.0);
-            if ui.small_button("Reset curve").clicked() {
+            if ui.small_button("Reset").clicked() {
                 i.shadows = 0;
                 i.midtones = 1.2;
                 i.highlights = 255;
+                i.use_dither = true;
             }
             ui.add_space(8.0);
 
@@ -639,8 +653,8 @@ impl DesignModePanel {
                                         im.filename = filename;
                                         im.orig_w_px = orig_w;
                                         im.orig_h_px = orig_h;
-                                        // Re-fit height to current width
                                         im.height_in = if im.lock_aspect { im.width_in * aspect } else { im.height_in };
+                                        // preserve curve + dither settings
                                         self.texture_cache.remove(&format!("img_{}", id));
                                     }
                                     break;
